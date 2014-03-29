@@ -9,7 +9,7 @@
  * published by the Free Software Foundation.
  */
 #include <linux/fs.h>
-#include <linux/f2fs_fs.h>
+#include "f2fs_fs.h"
 #include <linux/bio.h>
 #include <linux/blkdev.h>
 #include <linux/prefetch.h>
@@ -18,7 +18,8 @@
 #include "f2fs.h"
 #include "segment.h"
 #include "node.h"
-#include <trace/events/f2fs.h>
+
+//#include <trace/events/f2fs.h>
 
 /*
  * This function balances dirty node and dentry pages.
@@ -696,7 +697,7 @@ static void do_submit_bio(struct f2fs_sb_info *sbi,
 		p->sbi = sbi;
 		sbi->bio[btype]->bi_end_io = f2fs_end_io_write;
 
-		trace_f2fs_do_submit_bio(sbi->sb, btype, sync, sbi->bio[btype]);
+		//trace_f2fs_do_submit_bio(sbi->sb, btype, sync, sbi->bio[btype]);
 
 		if (type == META_FLUSH) {
 			DECLARE_COMPLETION_ONSTACK(wait);
@@ -752,7 +753,7 @@ alloc_new:
 	sbi->last_block_in_bio[type] = blk_addr;
 
 	up_write(&sbi->bio_sem);
-	trace_f2fs_submit_write_page(page, blk_addr, type);
+	//trace_f2fs_submit_write_page(page, blk_addr, type);
 }
 
 static bool __has_curseg_space(struct f2fs_sb_info *sbi, int type)

@@ -17,6 +17,14 @@
 #include <linux/slab.h>
 #include <linux/crc32.h>
 #include <linux/magic.h>
+#include "f2fs_fs.h"
+#include <linux/fs.h>
+#include <linux/sched.h>
+#include <linux/mm.h>
+#include <linux/mount.h>
+#include <linux/user_namespace.h>
+#include <linux/rcupdate.h>
+#include <linux/vmalloc.h>
 
 /*
  * For mount options
@@ -28,6 +36,11 @@
 #define F2FS_MOUNT_XATTR_USER		0x00000010
 #define F2FS_MOUNT_POSIX_ACL		0x00000020
 #define F2FS_MOUNT_DISABLE_EXT_IDENTIFY	0x00000040
+#define F2FS_SUPER_MAGIC        0xF2F52010
+#define VM_FAULT_RETRY  0x0400
+#define FALLOC_FL_KEEP_SIZE     0x01 /* default is extend size */
+#define FALLOC_FL_PUNCH_HOLE    0x02 /* de-allocates range */
+#define FALLOC_FL_NO_HIDE_STALE 0x04 /* reserved codepoint */
 
 #define clear_opt(sbi, option)	(sbi->mount_opt.opt &= ~F2FS_MOUNT_##option)
 #define set_opt(sbi, option)	(sbi->mount_opt.opt |= F2FS_MOUNT_##option)
@@ -37,11 +50,23 @@
 		typecheck(unsigned long long, b) &&			\
 		((long long)((a) - (b)) > 0))
 
+#define WRITE_FLUSH_FUA         (WRITE_SYNC | REQ_FUA)
+#define REQ_META                (1 << __REQ_RW_META)
+
 typedef u64 block_t;
 typedef u32 nid_t;
-
+#define QSTR_INIT(n,l) { .len=l, .name = n }
 struct f2fs_mount_info {
 	unsigned int	opt;
+};
+struct va_format {
+        const char *fmt;
+            va_list *va;
+};
+
+struct inode_rcu {
+    struct rcu_head i_rcu;
+    struct inode * inode;
 };
 
 static inline __u32 f2fs_crc32(void *buff, size_t len)
@@ -102,6 +127,238 @@ static inline int update_sits_in_cursum(struct f2fs_summary_block *rs, int i)
 	rs->n_sits = cpu_to_le16(before + i);
 	return before;
 }
+
+//zjc add
+static inline void* vzalloc(unsigned long size)
+{
+    return __vmalloc(size,GFP_KERNEL | __GFP_HIGHMEM | __GFP_ZERO,PAGE_KERNEL);
+}
+
+static inline  unsigned long find_next_bit_le(const void *addr, unsigned long size, unsigned long offset)
+{
+    return generic_find_next_le_bit(addr,size,offset);
+}
+static inline int test_and_set_bit_le(int nr, void *addr)
+{
+     return test_and_set_bit(nr ^ BITOP_LE_SWIZZLE, addr);
+}
+static inline unsigned long find_next_zero_bit_le(const void *addr, unsigned
+          long size, unsigned long offset)
+{
+    return generic_find_next_zero_le_bit(addr,size,offset);
+}
+static inline int test_and_clear_bit_le(int nr, void *addr)
+{
+     return test_and_clear_bit(nr ^ BITOP_LE_SWIZZLE, addr);
+}
+static inline struct inode *file_inode(struct file *f)
+{
+           // return f->f_inode;
+           return f->f_mapping->host;
+}
+#if 0
+int __sb_start_write(struct super_block *sb, int level, bool wait)
+{
+retry:
+     if (unlikely(sb->s_writers.frozen >= level)) {
+           if (!wait)
+                  return 0;
+             wait_event(sb->s_writers.wait_unfrozen,
+                           sb->s_writers.frozen < level);
+              }
+#ifdef CONFIG_LOCKDEP
+      acquire_freeze_lock(sb, level, !wait, _RET_IP_);
+#endif
+       percpu_counter_inc(&sb->s_writers.counter[level-1]);
+        /*
+         *   * Make sure counter is updated before we check for frozen.
+         *     * freeze_super() first sets frozen and then checks the counter.
+         *       */
+        smp_mb();
+         if (unlikely(sb->s_writers.frozen >= level)) {
+               __sb_end_write(sb, level);
+                 goto retry;
+         }
+          return 1;
+}
+
+static inline void sb_start_pagefault(struct super_block *sb)
+{
+      __sb_start_write(sb, SB_FREEZE_PAGEFAULT, true);
+}
+#endif
+#define SB_FREEZE_PAGEFAULT  2
+#define SB_FREEZE_FS 3
+#define SB_FREEZE_COMPLETE  4             
+
+static inline void sb_start_pagefault(struct super_block *sb)
+{
+    vfs_check_frozen(sb, SB_FREEZE_PAGEFAULT);
+}
+static inline void sb_start_intwrite(struct super_block *sb)
+{
+       // __sb_start_write(sb, SB_FREEZE_FS, true);
+       vfs_check_frozen(sb,SB_FREEZE_FS);
+}
+static inline void sb_end_intwrite(struct super_block *sb)
+{
+      //  __sb_end_write(sb, SB_FREEZE_FS);
+}
+
+
+static inline void sb_end_pagefault(struct super_block *sb)
+{
+      //  __sb_end_write(sb, SB_FREEZE_PAGEFAULT);
+}
+static inline int block_page_mkwrite_return(int err)
+{
+        if (err == 0)
+                    return VM_FAULT_LOCKED;
+            if (err == -EFAULT)
+                        return VM_FAULT_NOPAGE;
+                if (err == -ENOMEM)
+                            return VM_FAULT_OOM;
+                    if (err == -EAGAIN)
+                                return VM_FAULT_RETRY;
+                        /* -ENOSPC, -EDQUOT, -EIO ... */
+                        return VM_FAULT_SIGBUS;
+}
+static inline void truncate_setsize(struct inode *inode, loff_t newsize)
+{
+        loff_t oldsize;
+
+            oldsize = inode->i_size;
+                i_size_write(inode, newsize);
+
+                    truncate_pagecache(inode, oldsize, newsize);
+}
+
+
+static inline void setattr_copy(struct inode *inode, const struct iattr *attr)
+{
+    inode_setattr(inode,attr);//mk_inode_dirty
+}
+#ifdef CONFIG_UIDGID_STRICT_TYPE_CHECKS
+#define KUIDT_INIT(value) (kuid_t){ value }
+#define KGIDT_INIT(value) (kgid_t){ value }
+typedef struct {
+        uid_t val;
+} kuid_t;
+
+
+typedef struct {
+        gid_t val;
+} kgid_t;
+
+static inline uid_t __kuid_val(kuid_t uid)
+{
+        return uid.val;
+}
+static inline gid_t __kgid_val(kgid_t gid)
+{
+        return gid.val;
+}
+#else
+#define KUIDT_INIT(value) ((kuid_t) value )
+#define KGIDT_INIT(value) ((kgid_t) value )
+typedef uid_t kuid_t;
+typedef gid_t kgid_t;
+static inline uid_t __kuid_val(kuid_t uid)
+{
+         return uid;
+}
+static inline gid_t __kgid_val(kgid_t gid)
+{
+        return gid;
+}
+#endif
+static inline bool uid_eq(kuid_t left, kuid_t right)
+{
+      return __kuid_val(left) == __kuid_val(right);
+    //  return false;
+}
+static inline bool ns_capable(struct user_namespace *ns, int cap)
+{
+   if( capable(cap)==0)
+       return false;
+   return true;
+}
+static inline bool kuid_has_mapping(struct user_namespace *ns, kuid_t uid)
+{
+        return true;
+}
+static inline bool inode_capable(const struct inode *inode, int cap)
+{
+        struct user_namespace *ns = current_user_ns();
+
+            return ns_capable(ns, cap) && kuid_has_mapping(ns, inode->i_uid);
+}
+
+static inline bool inode_owner_or_capable(const struct inode *inode)
+{
+        if (uid_eq(current_fsuid(), inode->i_uid))
+                    return true;
+            if (inode_capable(inode, CAP_FOWNER))
+                        return true;
+                return false;
+}
+static inline void mnt_drop_write_file(struct file *file)
+{
+        mnt_drop_write(file->f_path.mnt);
+}
+static inline kuid_t make_kuid(struct user_namespace *from, uid_t uid)
+{
+        return KUIDT_INIT(uid);
+}
+
+static inline kgid_t make_kgid(struct user_namespace *from, gid_t gid)
+{
+        return KGIDT_INIT(gid);
+}
+static inline void i_uid_write(struct inode *inode, uid_t uid)
+{
+        inode->i_uid = make_kuid(&init_user_ns, uid);
+}
+
+static inline void i_gid_write(struct inode *inode, gid_t gid)
+{
+        inode->i_gid = make_kgid(&init_user_ns, gid);
+}
+static inline void set_nlink(struct inode *inode, unsigned int nlink)
+{
+        if (!nlink) {
+                    clear_nlink(inode);
+                    }
+}
+static inline uid_t from_kuid(struct user_namespace *to, kuid_t kuid)
+{
+        return __kuid_val(kuid);
+}
+
+static inline gid_t from_kgid(struct user_namespace *to, kgid_t kgid)
+{
+        return __kgid_val(kgid);
+}
+static inline uid_t i_uid_read(const struct inode *inode)
+{
+        return from_kuid(&init_user_ns, inode->i_uid);
+}
+
+static inline gid_t i_gid_read(const struct inode *inode)
+{
+        return from_kgid(&init_user_ns, inode->i_gid);
+}
+static inline int inode_unhashed(struct inode *inode)
+{
+        return hlist_unhashed(&inode->i_hash);
+}
+static inline int f2fs_generic_drop_inode(struct inode *inode)
+{
+        return !inode->i_nlink || inode_unhashed(inode);
+}
+//end
+
+
 
 /*
  * ioctl commands

@@ -13,14 +13,14 @@
 #include <linux/mpage.h>
 #include <linux/writeback.h>
 #include <linux/blkdev.h>
-#include <linux/f2fs_fs.h>
+#include "f2fs_fs.h"
 #include <linux/pagevec.h>
 #include <linux/swap.h>
 
 #include "f2fs.h"
 #include "node.h"
 #include "segment.h"
-#include <trace/events/f2fs.h>
+//#include <trace/events/f2fs.h>
 
 static struct kmem_cache *orphan_entry_slab;
 static struct kmem_cache *inode_entry_slab;
@@ -553,9 +553,9 @@ static void block_operations(struct f2fs_sb_info *sbi)
 		.nr_to_write = LONG_MAX,
 		.for_reclaim = 0,
 	};
-	struct blk_plug plug;
+	//struct blk_plug plug;
 
-	blk_start_plug(&plug);
+	//blk_start_plug(&plug);
 
 retry_flush_dents:
 	mutex_lock_all(sbi);
@@ -579,7 +579,7 @@ retry_flush_nodes:
 		sync_node_pages(sbi, 0, &wbc);
 		goto retry_flush_nodes;
 	}
-	blk_finish_plug(&plug);
+	//blk_finish_plug(&plug);
 }
 
 static void unblock_operations(struct f2fs_sb_info *sbi)
@@ -724,12 +724,12 @@ void write_checkpoint(struct f2fs_sb_info *sbi, bool is_umount)
 	struct f2fs_checkpoint *ckpt = F2FS_CKPT(sbi);
 	unsigned long long ckpt_ver;
 
-	trace_f2fs_write_checkpoint(sbi->sb, is_umount, "start block_ops");
+	//trace_f2fs_write_checkpoint(sbi->sb, is_umount, "start block_ops");
 
 	mutex_lock(&sbi->cp_mutex);
 	block_operations(sbi);
 
-	trace_f2fs_write_checkpoint(sbi->sb, is_umount, "finish block_ops");
+	//trace_f2fs_write_checkpoint(sbi->sb, is_umount, "finish block_ops");
 
 	f2fs_submit_bio(sbi, DATA, true);
 	f2fs_submit_bio(sbi, NODE, true);
@@ -753,7 +753,7 @@ void write_checkpoint(struct f2fs_sb_info *sbi, bool is_umount)
 	unblock_operations(sbi);
 	mutex_unlock(&sbi->cp_mutex);
 
-	trace_f2fs_write_checkpoint(sbi->sb, is_umount, "finish checkpoint");
+	//trace_f2fs_write_checkpoint(sbi->sb, is_umount, "finish checkpoint");
 }
 
 void init_orphan_info(struct f2fs_sb_info *sbi)

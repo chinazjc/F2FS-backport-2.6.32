@@ -9,7 +9,7 @@
  * published by the Free Software Foundation.
  */
 #include <linux/fs.h>
-#include <linux/f2fs_fs.h>
+#include "f2fs_fs.h"
 #include <linux/stat.h>
 #include <linux/buffer_head.h>
 #include <linux/writeback.h>
@@ -25,7 +25,7 @@
 #include "segment.h"
 #include "xattr.h"
 #include "acl.h"
-#include <trace/events/f2fs.h>
+//#include "trace_event_f2fs.h"
 
 static int f2fs_vm_page_mkwrite(struct vm_area_struct *vma,
 						struct vm_fault *vmf)
@@ -99,7 +99,7 @@ out:
 static const struct vm_operations_struct f2fs_file_vm_ops = {
 	.fault		= filemap_fault,
 	.page_mkwrite	= f2fs_vm_page_mkwrite,
-	.remap_pages	= generic_file_remap_pages,
+//	.remap_pages	= generic_file_remap_pages,
 };
 
 int f2fs_sync_file(struct file *file, loff_t start, loff_t end, int datasync)
@@ -117,10 +117,10 @@ int f2fs_sync_file(struct file *file, loff_t start, loff_t end, int datasync)
 	if (inode->i_sb->s_flags & MS_RDONLY)
 		return 0;
 
-	trace_f2fs_sync_file_enter(inode);
+	//trace_f2fs_sync_file_enter(inode);
 	ret = filemap_write_and_wait_range(inode->i_mapping, start, end);
 	if (ret) {
-		trace_f2fs_sync_file_exit(inode, need_cp, datasync, ret);
+		//trace_f2fs_sync_file_exit(inode, need_cp, datasync, ret);
 		return ret;
 	}
 
@@ -153,11 +153,11 @@ int f2fs_sync_file(struct file *file, loff_t start, loff_t end, int datasync)
 		}
 		filemap_fdatawait_range(sbi->node_inode->i_mapping,
 							0, LONG_MAX);
-		ret = blkdev_issue_flush(inode->i_sb->s_bdev, GFP_KERNEL, NULL);
+		ret = blkdev_issue_flush(inode->i_sb->s_bdev,/* GFP_KERNEL,*/ NULL);
 	}
 out:
 	mutex_unlock(&inode->i_mutex);
-	trace_f2fs_sync_file_exit(inode, need_cp, datasync, ret);
+	//trace_f2fs_sync_file_exit(inode, need_cp, datasync, ret);
 	return ret;
 }
 
@@ -194,8 +194,8 @@ static int truncate_data_blocks_range(struct dnode_of_data *dn, int count)
 	}
 	dn->ofs_in_node = ofs;
 
-	trace_f2fs_truncate_data_blocks_range(dn->inode, dn->nid,
-					 dn->ofs_in_node, nr_free);
+	//trace_f2fs_truncate_data_blocks_range(dn->inode, dn->nid,
+					 //dn->ofs_in_node, nr_free);
 	return nr_free;
 }
 
@@ -236,7 +236,7 @@ static int truncate_blocks(struct inode *inode, u64 from)
 	int count = 0, ilock = -1;
 	int err;
 
-	trace_f2fs_truncate_blocks_enter(inode, from);
+	//trace_f2fs_truncate_blocks_enter(inode, from);
 
 	free_from = (pgoff_t)
 			((from + blocksize - 1) >> (sbi->log_blocksize));
@@ -248,7 +248,7 @@ static int truncate_blocks(struct inode *inode, u64 from)
 		if (err == -ENOENT)
 			goto free_next;
 		mutex_unlock_op(sbi, ilock);
-		trace_f2fs_truncate_blocks_exit(inode, err);
+		//trace_f2fs_truncate_blocks_exit(inode, err);
 		return err;
 	}
 
@@ -273,7 +273,7 @@ free_next:
 	/* lastly zero out the first data page */
 	truncate_partial_data_page(inode, from);
 
-	trace_f2fs_truncate_blocks_exit(inode, err);
+	//trace_f2fs_truncate_blocks_exit(inode, err);
 	return err;
 }
 
@@ -283,7 +283,7 @@ void f2fs_truncate(struct inode *inode)
 				S_ISLNK(inode->i_mode)))
 		return;
 
-	trace_f2fs_truncate(inode);
+	//trace_f2fs_truncate(inode);
 
 	if (!truncate_blocks(inode, i_size_read(inode))) {
 		inode->i_mtime = inode->i_ctime = CURRENT_TIME;
@@ -365,7 +365,7 @@ int f2fs_setattr(struct dentry *dentry, struct iattr *attr)
 const struct inode_operations f2fs_file_inode_operations = {
 	.getattr	= f2fs_getattr,
 	.setattr	= f2fs_setattr,
-	.get_acl	= f2fs_get_acl,
+//	.get_acl	= f2fs_get_acl,
 #ifdef CONFIG_F2FS_FS_XATTR
 	.setxattr	= generic_setxattr,
 	.getxattr	= generic_getxattr,
@@ -550,7 +550,7 @@ static long f2fs_fallocate(struct file *file, int mode,
 		inode->i_mtime = inode->i_ctime = CURRENT_TIME;
 		mark_inode_dirty(inode);
 	}
-	trace_f2fs_fallocate(inode, mode, offset, len, ret);
+	//trace_f2fs_fallocate(inode, mode, offset, len, ret);
 	return ret;
 }
 
@@ -653,7 +653,7 @@ const struct file_operations f2fs_file_operations = {
 	.open		= generic_file_open,
 	.mmap		= f2fs_file_mmap,
 	.fsync		= f2fs_sync_file,
-	.fallocate	= f2fs_fallocate,
+//	.fallocate	= f2fs_fallocate,
 	.unlocked_ioctl	= f2fs_ioctl,
 #ifdef CONFIG_COMPAT
 	.compat_ioctl	= f2fs_compat_ioctl,

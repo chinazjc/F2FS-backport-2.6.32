@@ -9,7 +9,7 @@
  * published by the Free Software Foundation.
  */
 #include <linux/fs.h>
-#include <linux/f2fs_fs.h>
+#include "f2fs_fs.h"
 #include "f2fs.h"
 #include "node.h"
 #include "acl.h"
@@ -291,7 +291,7 @@ static int make_empty_dir(struct inode *inode, struct inode *parent)
 	if (IS_ERR(dentry_page))
 		return PTR_ERR(dentry_page);
 
-	kaddr = kmap_atomic(dentry_page);
+	kaddr = kmap_atomic(dentry_page,KM_USER0);
 	dentry_blk = (struct f2fs_dentry_block *)kaddr;
 
 	de = &dentry_blk->dentry[0];
@@ -310,7 +310,7 @@ static int make_empty_dir(struct inode *inode, struct inode *parent)
 
 	test_and_set_bit_le(0, &dentry_blk->dentry_bitmap);
 	test_and_set_bit_le(1, &dentry_blk->dentry_bitmap);
-	kunmap_atomic(kaddr);
+	kunmap_atomic(kaddr,KM_USER0);
 
 	set_page_dirty(dentry_page);
 	f2fs_put_page(dentry_page, 1);
@@ -572,7 +572,7 @@ bool f2fs_empty_dir(struct inode *dir)
 				return false;
 		}
 
-		kaddr = kmap_atomic(dentry_page);
+		kaddr = kmap_atomic(dentry_page,KM_USER0);
 		dentry_blk = (struct f2fs_dentry_block *)kaddr;
 		if (bidx == 0)
 			bit_pos = 2;
@@ -581,7 +581,7 @@ bool f2fs_empty_dir(struct inode *dir)
 		bit_pos = find_next_bit_le(&dentry_blk->dentry_bitmap,
 						NR_DENTRY_IN_BLOCK,
 						bit_pos);
-		kunmap_atomic(kaddr);
+		kunmap_atomic(kaddr,KM_USER0);
 
 		f2fs_put_page(dentry_page, 1);
 

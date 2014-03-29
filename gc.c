@@ -12,7 +12,7 @@
 #include <linux/module.h>
 #include <linux/backing-dev.h>
 #include <linux/init.h>
-#include <linux/f2fs_fs.h>
+#include "f2fs_fs.h"
 #include <linux/kthread.h>
 #include <linux/delay.h>
 #include <linux/freezer.h>
@@ -22,7 +22,7 @@
 #include "node.h"
 #include "segment.h"
 #include "gc.h"
-#include <trace/events/f2fs.h>
+//#include <trace/events/f2fs.h>
 
 static struct kmem_cache *winode_slab;
 
@@ -44,7 +44,7 @@ static int gc_thread_func(void *data)
 		if (kthread_should_stop())
 			break;
 
-		if (sbi->sb->s_writers.frozen >= SB_FREEZE_WRITE) {
+		if (sbi->sb->s_frozen >= SB_FREEZE_WRITE) {
 			wait_ms = GC_THREAD_MAX_SLEEP_TIME;
 			continue;
 		}
@@ -299,9 +299,9 @@ got_it:
 		}
 		*result = (p.min_segno / p.ofs_unit) * p.ofs_unit;
 
-		trace_f2fs_get_victim(sbi->sb, type, gc_type, &p,
-				sbi->cur_victim_sec,
-				prefree_segments(sbi), free_segments(sbi));
+		//trace_f2fs_get_victim(sbi->sb, type, gc_type, &p,
+			//	sbi->cur_victim_sec,
+			//	prefree_segments(sbi), free_segments(sbi));
 	}
 	mutex_unlock(&dirty_i->seglist_lock);
 
@@ -639,14 +639,14 @@ static void do_garbage_collect(struct f2fs_sb_info *sbi, unsigned int segno,
 {
 	struct page *sum_page;
 	struct f2fs_summary_block *sum;
-	struct blk_plug plug;
+	//struct blk_plug plug;
 
 	/* read segment summary of victim */
 	sum_page = get_sum_page(sbi, segno);
 	if (IS_ERR(sum_page))
 		return;
 
-	blk_start_plug(&plug);
+//	blk_start_plug(&plug);
 
 	sum = page_address(sum_page);
 
@@ -658,7 +658,7 @@ static void do_garbage_collect(struct f2fs_sb_info *sbi, unsigned int segno,
 		gc_data_segment(sbi, sum->entries, ilist, segno, gc_type);
 		break;
 	}
-	blk_finish_plug(&plug);
+//	blk_finish_plug(&plug);
 
 	stat_inc_seg_count(sbi, GET_SUM_TYPE((&sum->footer)));
 	stat_inc_call_count(sbi->stat_info);

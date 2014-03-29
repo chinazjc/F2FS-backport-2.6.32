@@ -1,6 +1,11 @@
 #undef TRACE_SYSTEM
 #define TRACE_SYSTEM f2fs
 
+#define DECLARE_EVENT_CLASS(call, proto, args, tstruct, assign, print)  \
+     struct ftrace_data_offsets_##call {         \
+           tstruct;      \
+          };
+
 #if !defined(_TRACE_F2FS_H) || defined(TRACE_HEADER_MULTI_READ)
 #define _TRACE_F2FS_H
 

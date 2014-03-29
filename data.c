@@ -9,7 +9,7 @@
  * published by the Free Software Foundation.
  */
 #include <linux/fs.h>
-#include <linux/f2fs_fs.h>
+#include "f2fs_fs.h"
 #include <linux/buffer_head.h>
 #include <linux/mpage.h>
 #include <linux/aio.h>
@@ -22,7 +22,7 @@
 #include "f2fs.h"
 #include "node.h"
 #include "segment.h"
-#include <trace/events/f2fs.h>
+//#include <trace/events/f2fs.h>
 
 /*
  * Lock ordering for the change of data block address:
@@ -56,7 +56,7 @@ int reserve_new_block(struct dnode_of_data *dn)
 	if (!inc_valid_block_count(sbi, dn->inode, 1))
 		return -ENOSPC;
 
-	trace_f2fs_reserve_new_block(dn->inode, dn->nid, dn->ofs_in_node);
+	//trace_f2fs_reserve_new_block(dn->inode, dn->nid, dn->ofs_in_node);
 
 	__set_data_blkaddr(dn, NEW_ADDR);
 	dn->data_blkaddr = NEW_ADDR;
@@ -363,7 +363,7 @@ int f2fs_readpage(struct f2fs_sb_info *sbi, struct page *page,
 	struct block_device *bdev = sbi->sb->s_bdev;
 	struct bio *bio;
 
-	trace_f2fs_readpage(page, blk_addr, type);
+	//trace_f2fs_readpage(page, blk_addr, type);
 
 	down_read(&sbi->bio_sem);
 
@@ -406,7 +406,7 @@ static int get_data_block_ro(struct inode *inode, sector_t iblock,
 	pgofs =	(pgoff_t)(iblock >> (PAGE_CACHE_SHIFT - blkbits));
 
 	if (check_extent_cache(inode, pgofs, bh_result)) {
-		trace_f2fs_get_data_block(inode, iblock, bh_result, 0);
+		//trace_f2fs_get_data_block(inode, iblock, bh_result, 0);
 		return 0;
 	}
 
@@ -414,7 +414,7 @@ static int get_data_block_ro(struct inode *inode, sector_t iblock,
 	set_new_dnode(&dn, inode, NULL, NULL, 0);
 	err = get_dnode_of_data(&dn, pgofs, LOOKUP_NODE_RA);
 	if (err) {
-		trace_f2fs_get_data_block(inode, iblock, bh_result, err);
+		//trace_f2fs_get_data_block(inode, iblock, bh_result, err);
 		return (err == -ENOENT) ? 0 : err;
 	}
 
@@ -441,7 +441,7 @@ static int get_data_block_ro(struct inode *inode, sector_t iblock,
 		bh_result->b_size = (i << blkbits);
 	}
 	f2fs_put_dnode(&dn);
-	trace_f2fs_get_data_block(inode, iblock, bh_result, 0);
+	//trace_f2fs_get_data_block(inode, iblock, bh_result, 0);
 	return 0;
 }
 
@@ -694,8 +694,8 @@ static ssize_t f2fs_direct_IO(int rw, struct kiocb *iocb,
 		return 0;
 
 	/* Needs synchronization with the cleaner */
-	return blockdev_direct_IO(rw, iocb, inode, iov, offset, nr_segs,
-						  get_data_block_ro);
+	return blockdev_direct_IO(rw, iocb, inode,inode->i_sb->s_bdev, iov, offset, nr_segs,
+						  get_data_block_ro,NULL);
 }
 
 static void f2fs_invalidate_data_page(struct page *page, unsigned long offset)

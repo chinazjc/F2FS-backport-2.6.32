@@ -9,7 +9,7 @@
  * published by the Free Software Foundation.
  */
 #include <linux/fs.h>
-#include <linux/f2fs_fs.h>
+#include "f2fs_fs.h"
 #include <linux/mpage.h>
 #include <linux/backing-dev.h>
 #include <linux/blkdev.h>
@@ -19,7 +19,7 @@
 #include "f2fs.h"
 #include "node.h"
 #include "segment.h"
-#include <trace/events/f2fs.h>
+//#include <trace/events/f2fs.h>
 
 static struct kmem_cache *nat_entry_slab;
 static struct kmem_cache *free_nid_slab;
@@ -89,12 +89,12 @@ static void ra_nat_pages(struct f2fs_sb_info *sbi, int nid)
 {
 	struct address_space *mapping = sbi->meta_inode->i_mapping;
 	struct f2fs_nm_info *nm_i = NM_I(sbi);
-	struct blk_plug plug;
+	//struct blk_plug plug;
 	struct page *page;
 	pgoff_t index;
 	int i;
 
-	blk_start_plug(&plug);
+//	blk_start_plug(&plug);
 
 	for (i = 0; i < FREE_NID_PAGES; i++, nid += NAT_ENTRY_PER_BLOCK) {
 		if (nid >= nm_i->max_nid)
@@ -113,7 +113,7 @@ static void ra_nat_pages(struct f2fs_sb_info *sbi, int nid)
 
 		f2fs_put_page(page, 0);
 	}
-	blk_finish_plug(&plug);
+//	blk_finish_plug(&plug);
 }
 
 static struct nat_entry *__lookup_nat_cache(struct f2fs_nm_info *nm_i, nid_t n)
@@ -513,7 +513,7 @@ invalidate:
 
 	f2fs_put_page(dn->node_page, 1);
 	dn->node_page = NULL;
-	trace_f2fs_truncate_node(dn->inode, dn->nid, ni.blk_addr);
+	//trace_f2fs_truncate_node(dn->inode, dn->nid, ni.blk_addr);
 }
 
 static int truncate_dnode(struct dnode_of_data *dn)
@@ -554,11 +554,11 @@ static int truncate_nodes(struct dnode_of_data *dn, unsigned int nofs,
 	if (dn->nid == 0)
 		return NIDS_PER_BLOCK + 1;
 
-	trace_f2fs_truncate_nodes_enter(dn->inode, dn->nid, dn->data_blkaddr);
+	//trace_f2fs_truncate_nodes_enter(dn->inode, dn->nid, dn->data_blkaddr);
 
 	page = get_node_page(sbi, dn->nid);
 	if (IS_ERR(page)) {
-		trace_f2fs_truncate_nodes_exit(dn->inode, PTR_ERR(page));
+		//trace_f2fs_truncate_nodes_exit(dn->inode, PTR_ERR(page));
 		return PTR_ERR(page);
 	}
 
@@ -602,12 +602,12 @@ static int truncate_nodes(struct dnode_of_data *dn, unsigned int nofs,
 	} else {
 		f2fs_put_page(page, 1);
 	}
-	trace_f2fs_truncate_nodes_exit(dn->inode, freed);
+	//trace_f2fs_truncate_nodes_exit(dn->inode, freed);
 	return freed;
 
 out_err:
 	f2fs_put_page(page, 1);
-	trace_f2fs_truncate_nodes_exit(dn->inode, ret);
+	//trace_f2fs_truncate_nodes_exit(dn->inode, ret);
 	return ret;
 }
 
@@ -663,7 +663,7 @@ fail:
 	for (i = depth - 3; i >= 0; i--)
 		f2fs_put_page(pages[i], 1);
 
-	trace_f2fs_truncate_partial_nodes(dn->inode, nid, depth, err);
+	//trace_f2fs_truncate_partial_nodes(dn->inode, nid, depth, err);
 
 	return err;
 }
@@ -682,13 +682,13 @@ int truncate_inode_blocks(struct inode *inode, pgoff_t from)
 	struct dnode_of_data dn;
 	struct page *page;
 
-	trace_f2fs_truncate_inode_blocks_enter(inode, from);
+	//trace_f2fs_truncate_inode_blocks_enter(inode, from);
 
 	level = get_node_path(from, offset, noffset);
 restart:
 	page = get_node_page(sbi, inode->i_ino);
 	if (IS_ERR(page)) {
-		trace_f2fs_truncate_inode_blocks_exit(inode, PTR_ERR(page));
+		//trace_f2fs_truncate_inode_blocks_exit(inode, PTR_ERR(page));
 		return PTR_ERR(page);
 	}
 
@@ -764,7 +764,7 @@ skip_partial:
 	}
 fail:
 	f2fs_put_page(page, 0);
-	trace_f2fs_truncate_inode_blocks_exit(inode, err);
+	//trace_f2fs_truncate_inode_blocks_exit(inode, err);
 	return err > 0 ? 0 : err;
 }
 
@@ -955,7 +955,7 @@ struct page *get_node_page_ra(struct page *parent, int start)
 {
 	struct f2fs_sb_info *sbi = F2FS_SB(parent->mapping->host->i_sb);
 	struct address_space *mapping = sbi->node_inode->i_mapping;
-	struct blk_plug plug;
+	//struct blk_plug plug;
 	struct page *page;
 	int err, i, end;
 	nid_t nid;
@@ -975,7 +975,7 @@ repeat:
 	else if (err == LOCKED_PAGE)
 		goto page_hit;
 
-	blk_start_plug(&plug);
+//	blk_start_plug(&plug);
 
 	/* Then, try readahead for siblings of the desired node */
 	end = start + MAX_RA_NODE;
@@ -987,7 +987,7 @@ repeat:
 		ra_node_page(sbi, nid);
 	}
 
-	blk_finish_plug(&plug);
+//	blk_finish_plug(&plug);
 
 	lock_page(page);
 	if (page->mapping != mapping) {

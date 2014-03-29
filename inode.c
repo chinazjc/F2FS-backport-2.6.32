@@ -9,14 +9,13 @@
  * published by the Free Software Foundation.
  */
 #include <linux/fs.h>
-#include <linux/f2fs_fs.h>
+#include "f2fs_fs.h"
 #include <linux/buffer_head.h>
 #include <linux/writeback.h>
 
 #include "f2fs.h"
 #include "node.h"
-
-#include <trace/events/f2fs.h>
+//#include "trace_event_f2fs.h"
 
 void f2fs_set_inode_flags(struct inode *inode)
 {
@@ -100,7 +99,7 @@ struct inode *f2fs_iget(struct super_block *sb, unsigned long ino)
 		return ERR_PTR(-ENOMEM);
 
 	if (!(inode->i_state & I_NEW)) {
-		trace_f2fs_iget(inode);
+		//trace_f2fs_iget(inode);
 		return inode;
 	}
 	if (ino == F2FS_NODE_INO(sbi) || ino == F2FS_META_INO(sbi))
@@ -144,12 +143,12 @@ make_now:
 		goto bad_inode;
 	}
 	unlock_new_inode(inode);
-	trace_f2fs_iget(inode);
+	//trace_f2fs_iget(inode);
 	return inode;
 
 bad_inode:
 	iget_failed(inode);
-	trace_f2fs_iget_exit(inode, ret);
+	//trace_f2fs_iget_exit(inode, ret);
 	return ERR_PTR(ret);
 }
 
@@ -245,7 +244,7 @@ void f2fs_evict_inode(struct inode *inode)
 	struct f2fs_sb_info *sbi = F2FS_SB(inode->i_sb);
 	int ilock;
 
-	trace_f2fs_evict_inode(inode);
+	//trace_f2fs_evict_inode(inode);
 	truncate_inode_pages(&inode->i_data, 0);
 
 	if (inode->i_ino == F2FS_NODE_INO(sbi) ||

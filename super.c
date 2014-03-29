@@ -21,7 +21,7 @@
 #include <linux/random.h>
 #include <linux/exportfs.h>
 #include <linux/blkdev.h>
-#include <linux/f2fs_fs.h>
+#include "f2fs_fs.h"
 
 #include "f2fs.h"
 #include "node.h"
@@ -29,7 +29,7 @@
 #include "xattr.h"
 
 #define CREATE_TRACE_POINTS
-#include <trace/events/f2fs.h>
+//#include <trace/events/f2fs.h>
 
 static struct kmem_cache *f2fs_inode_cachep;
 
@@ -109,18 +109,21 @@ static int f2fs_drop_inode(struct inode *inode)
 	 */
 	if (!inode_unhashed(inode) && inode->i_state & I_SYNC)
 		return 0;
-	return generic_drop_inode(inode);
+	return f2fs_generic_drop_inode(inode);
 }
 
 static void f2fs_i_callback(struct rcu_head *head)
 {
-	struct inode *inode = container_of(head, struct inode, i_rcu);
-	kmem_cache_free(f2fs_inode_cachep, F2FS_I(inode));
+	struct inode_rcu *ir = container_of(head, struct inode_rcu, i_rcu);
+	kmem_cache_free(f2fs_inode_cachep, F2FS_I(ir->inode));
+        kfree(ir);
 }
 
 static void f2fs_destroy_inode(struct inode *inode)
 {
-	call_rcu(&inode->i_rcu, f2fs_i_callback);
+        struct inode_rcu * ir=(struct inode_rcu *)kmalloc(sizeof(struct inode_rcu),GFP_KERNEL);
+	ir->inode=inode;
+        call_rcu(&(ir->i_rcu), f2fs_i_callback);
 }
 
 static void f2fs_put_super(struct super_block *sb)
@@ -150,7 +153,7 @@ int f2fs_sync_fs(struct super_block *sb, int sync)
 {
 	struct f2fs_sb_info *sbi = F2FS_SB(sb);
 
-	trace_f2fs_sync_fs(sb, sync);
+	//trace_f2fs_sync_fs(sb, sync);
 
 	if (!sbi->s_dirty && !get_pages(sbi, F2FS_DIRTY_NODES))
 		return 0;
@@ -250,8 +253,9 @@ static struct super_operations f2fs_sops = {
 	.destroy_inode	= f2fs_destroy_inode,
 	.write_inode	= f2fs_write_inode,
 	.show_options	= f2fs_show_options,
-	.evict_inode	= f2fs_evict_inode,
-	.put_super	= f2fs_put_super,
+//	.evict_inode	= f2fs_evict_inode,
+        .clear_inode    = f2fs_evict_inode,
+        .put_super	= f2fs_put_super,
 	.sync_fs	= f2fs_sync_fs,
 	.freeze_fs	= f2fs_freeze,
 	.unfreeze_fs	= f2fs_unfreeze,
@@ -558,7 +562,7 @@ static int f2fs_fill_super(struct super_block *sb, void *data, int silent)
 		goto free_sb_buf;
 
 	sb->s_maxbytes = max_file_size(le32_to_cpu(raw_super->log_blocksize));
-	sb->s_max_links = F2FS_LINK_MAX;
+	//sb->s_max_links = F2FS_LINK_MAX;
 	get_random_bytes(&sbi->s_next_generation, sizeof(u32));
 
 	sb->s_op = &f2fs_sops;
@@ -569,7 +573,7 @@ static int f2fs_fill_super(struct super_block *sb, void *data, int silent)
 	sb->s_time_gran = 1;
 	sb->s_flags = (sb->s_flags & ~MS_POSIXACL) |
 		(test_opt(sbi, POSIX_ACL) ? MS_POSIXACL : 0);
-	memcpy(sb->s_uuid, raw_super->uuid, sizeof(raw_super->uuid));
+//	memcpy(sb->s_uuid, raw_super->uuid, sizeof(raw_super->uuid));
 
 	/* init f2fs-specific super block info */
 	sbi->sb = sb;
@@ -660,8 +664,9 @@ static int f2fs_fill_super(struct super_block *sb, void *data, int silent)
 	if (!S_ISDIR(root->i_mode) || !root->i_blocks || !root->i_size)
 		goto free_root_inode;
 
-	sb->s_root = d_make_root(root); /* allocate root dentry */
-	if (!sb->s_root) {
+//	sb->s_root = d_make_root(root); /* allocate root dentry */
+        sb->s_root = d_alloc_root(root);
+        if (!sb->s_root) {
 		err = -ENOMEM;
 		goto free_root_inode;
 	}
@@ -715,19 +720,22 @@ free_sbi:
 	return err;
 }
 
-static struct dentry *f2fs_mount(struct file_system_type *fs_type, int flags,
-			const char *dev_name, void *data)
+static int f2fs_mount(struct file_system_type *fs_type, int flags,
+			const char *dev_name, void *data,struct vfsmount* mnt)
 {
-	return mount_bdev(fs_type, flags, dev_name, data, f2fs_fill_super);
+    //return mount_bdev(fs_type, flags, dev_name, data, f2fs_fill_super);
+    return get_sb_bdev(fs_type,flags,dev_name,data,f2fs_fill_super,mnt);
 }
 
 static struct file_system_type f2fs_fs_type = {
 	.owner		= THIS_MODULE,
 	.name		= "f2fs",
-	.mount		= f2fs_mount,
-	.kill_sb	= kill_block_super,
+//	.mount		= f2fs_mount,
+        .get_sb         = f2fs_mount,
+        .kill_sb	= kill_block_super,
 	.fs_flags	= FS_REQUIRES_DEV,
 };
+#define MODULE_ALIAS_FS(NAME) MODULE_ALIAS("fs-" NAME)
 MODULE_ALIAS_FS("f2fs");
 
 static int __init init_inodecache(void)

@@ -9,7 +9,7 @@
  * published by the Free Software Foundation.
  */
 #include <linux/fs.h>
-#include <linux/f2fs_fs.h>
+#include "f2fs_fs.h"
 #include <linux/pagemap.h>
 #include <linux/sched.h>
 #include <linux/ctype.h>
@@ -18,7 +18,7 @@
 #include "node.h"
 #include "xattr.h"
 #include "acl.h"
-#include <trace/events/f2fs.h>
+//#include <trace/events/f2fs.h>
 
 static struct inode *f2fs_new_inode(struct inode *dir, umode_t mode)
 {
@@ -63,7 +63,7 @@ static struct inode *f2fs_new_inode(struct inode *dir, umode_t mode)
 		nid_free = true;
 		goto out;
 	}
-	trace_f2fs_new_inode(inode, 0);
+	//trace_f2fs_new_inode(inode, 0);
 	mark_inode_dirty(inode);
 	return inode;
 
@@ -71,7 +71,7 @@ out:
 	clear_nlink(inode);
 	unlock_new_inode(inode);
 fail:
-	trace_f2fs_new_inode(inode, err);
+	//trace_f2fs_new_inode(inode, err);
 	make_bad_inode(inode);
 	iput(inode);
 	if (nid_free)
@@ -240,7 +240,7 @@ static int f2fs_unlink(struct inode *dir, struct dentry *dentry)
 	int err = -ENOENT;
 	int ilock;
 
-	trace_f2fs_unlink_enter(dir, dentry);
+	//trace_f2fs_unlink_enter(dir, dentry);
 	f2fs_balance_fs(sbi);
 
 	de = f2fs_find_entry(dir, &dentry->d_name, &page);
@@ -261,7 +261,7 @@ static int f2fs_unlink(struct inode *dir, struct dentry *dentry)
 	/* In order to evict this inode,  we set it dirty */
 	mark_inode_dirty(inode);
 fail:
-	trace_f2fs_unlink_exit(inode, err);
+	//trace_f2fs_unlink_exit(inode, err);
 	return err;
 }
 
@@ -499,7 +499,7 @@ const struct inode_operations f2fs_dir_inode_operations = {
 	.mknod		= f2fs_mknod,
 	.rename		= f2fs_rename,
 	.setattr	= f2fs_setattr,
-	.get_acl	= f2fs_get_acl,
+//	.get_acl	= f2fs_get_acl,
 #ifdef CONFIG_F2FS_FS_XATTR
 	.setxattr	= generic_setxattr,
 	.getxattr	= generic_getxattr,
@@ -523,7 +523,7 @@ const struct inode_operations f2fs_symlink_inode_operations = {
 
 const struct inode_operations f2fs_special_inode_operations = {
 	.setattr        = f2fs_setattr,
-	.get_acl	= f2fs_get_acl,
+//	.get_acl	= f2fs_get_acl,
 #ifdef CONFIG_F2FS_FS_XATTR
 	.setxattr       = generic_setxattr,
 	.getxattr       = generic_getxattr,
