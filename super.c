@@ -22,7 +22,7 @@
 #include <linux/exportfs.h>
 #include <linux/blkdev.h>
 #include "f2fs_fs.h"
-
+#include <linux/writeback.h>
 #include "f2fs.h"
 #include "node.h"
 #include "segment.h"
@@ -30,6 +30,14 @@
 
 #define CREATE_TRACE_POINTS
 //#include <trace/events/f2fs.h>
+//#define MY_DEBUG
+
+#ifdef MY_DEBUG
+#define MDB(fmt, args...) printk(KERN_EMERG "MDB:" fmt,## args)
+#else
+#define MDB(fmt, args...) 
+#endif
+
 
 static struct kmem_cache *f2fs_inode_cachep;
 
@@ -98,8 +106,13 @@ static struct inode *f2fs_alloc_inode(struct super_block *sb)
 	return &fi->vfs_inode;
 }
 
-static int f2fs_drop_inode(struct inode *inode)
+static void f2fs_drop_inode(struct inode *inode)
 {
+#if 0
+	MDB("f2fs_drop_inode,before sleep.\n");
+	MDB("  \n");
+	ssleep(4);
+	MDB("f2fs_drop_inode:1\n");
 	/*
 	 * This is to avoid a deadlock condition like below.
 	 * writeback_single_inode(inode)
@@ -108,8 +121,50 @@ static int f2fs_drop_inode(struct inode *inode)
 	 *       - inode_wait_for_writeback(inode)
 	 */
 	if (!inode_unhashed(inode) && inode->i_state & I_SYNC)
+	{
+		ssleep(4);
+		MDB("f2fs_drop_inode:2 return 0\n");
+		ssleep(5);
 		return 0;
+	}
+	ssleep(4);	
+	MDB("f2fs_drop_inode:3 return f2fs_generic_drop_inode\n");
+	ssleep(5);
 	return f2fs_generic_drop_inode(inode);
+#endif
+#if 0
+	MDB("f2fs_drop_inode\n");
+	MDB("\n");
+	int drop=0;
+	if (!inode_unhashed(inode) && inode->i_state & I_SYNC)
+		drop=0;
+	else drop=f2fs_generic_drop_inode(inode);
+
+	if(!drop &&(inode->i_sb->s_flags&&MS_ACTIVE))//gc?
+	{
+		//inode->i_state |=I_REFERENCED
+		//inode_add_lru(inode);
+		spin_unlock(&inode_lock);
+		MDB("f2fs_drop_inode:not normal return.\n");
+		return 0;
+	}
+	if(!drop)
+	{
+		inode->i_state |=I_WILL_FREE;
+		spin_unlock(&inode_lock);
+		write_inode_now(inode,1);//don't know if itis right
+		spin_lock(&inode_lock);
+		inode->i_state &= ~I_WILL_FREE;
+	}
+	inode->i_state |= I_FREEING;
+	generic_drop_inode(inode);
+	MDB("f2fs_drop_inode:normal return.\n");
+	return 0;
+#endif
+	MDB("f2fs_drop_inode\n");
+	generic_drop_inode(inode);
+	MDB("f2fs_drop_inode:generic_drop_inode return.\n");
+	return ;
 }
 
 static void f2fs_i_callback(struct rcu_head *head)
@@ -213,10 +268,11 @@ static int f2fs_statfs(struct dentry *dentry, struct kstatfs *buf)
 	return 0;
 }
 
-static int f2fs_show_options(struct seq_file *seq, struct dentry *root)
+static int f2fs_show_options(struct seq_file *seq,/* struct dentry *root*/
+						struct vfsmount *vfsm)
 {
+	struct dentry* root=vfsm->mnt_root;
 	struct f2fs_sb_info *sbi = F2FS_SB(root->d_sb);
-
 	if (test_opt(sbi, BG_GC))
 		seq_puts(seq, ",background_gc_on");
 	else
@@ -228,7 +284,7 @@ static int f2fs_show_options(struct seq_file *seq, struct dentry *root)
 	if (test_opt(sbi, NOHEAP))
 		seq_puts(seq, ",no_heap_alloc");
 #ifdef CONFIG_F2FS_FS_XATTR
-	if (test_opt(sbi, XATTR_USER))
+	if (test_opt(sbi, XATTR_USER))//F2FS_MOUNT_XATTR_USER
 		seq_puts(seq, ",user_xattr");
 	else
 		seq_puts(seq, ",nouser_xattr");
@@ -254,7 +310,7 @@ static struct super_operations f2fs_sops = {
 	.write_inode	= f2fs_write_inode,
 	.show_options	= f2fs_show_options,
 //	.evict_inode	= f2fs_evict_inode,
-        .clear_inode    = f2fs_evict_inode,
+        .delete_inode    = f2fs_evict_inode,// 3.10 evict -> 2.6.32 delete_inode
         .put_super	= f2fs_put_super,
 	.sync_fs	= f2fs_sync_fs,
 	.freeze_fs	= f2fs_freeze,
@@ -727,12 +783,40 @@ static int f2fs_mount(struct file_system_type *fs_type, int flags,
     return get_sb_bdev(fs_type,flags,dev_name,data,f2fs_fill_super,mnt);
 }
 
+static void f2fs_kill_sb(struct super_block* sb)
+{
+	MDB("f2fs_kill_sb\n");
+	ssleep(5);	
+	//kill_block_super(sb);
+	
+	struct block_device *bdev = sb->s_bdev;
+	fmode_t mode = sb->s_mode;
+
+	bdev->bd_super = NULL;
+	MDB("f2fs_kill_sb: before generic_shutdown_super\n");
+	ssleep(5);
+	generic_shutdown_super(sb);
+	MDB("f2fs_kill_sb: before sync_blockdev\n");
+        ssleep(5);
+	sync_blockdev(bdev);
+	MDB("f2fs_kill_sb: before close_bdev_exclusive\n");
+        ssleep(5);
+	close_bdev_exclusive(bdev, mode);	
+
+	MDB("after kill_block_super.\n");
+	ssleep(5);
+	MDB("return \n");
+	MDB("  \n");
+	
+}
+
 static struct file_system_type f2fs_fs_type = {
 	.owner		= THIS_MODULE,
 	.name		= "f2fs",
 //	.mount		= f2fs_mount,
         .get_sb         = f2fs_mount,
-        .kill_sb	= kill_block_super,
+       // .kill_sb	= f2fs_kill_sb,
+	.kill_sb        = kill_block_super,
 	.fs_flags	= FS_REQUIRES_DEV,
 };
 #define MODULE_ALIAS_FS(NAME) MODULE_ALIAS("fs-" NAME)

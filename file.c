@@ -26,6 +26,15 @@
 #include "xattr.h"
 #include "acl.h"
 //#include "trace_event_f2fs.h"
+//#define MY_DEBUG
+
+#ifdef MY_DEBUG
+#define MDB(fmt, args...) if(printk_ratelimit())printk(KERN_DEBUG "MDB:" fmt,## args)
+#else
+#define MDB(fmt, args...) 
+#endif
+
+
 
 static int f2fs_vm_page_mkwrite(struct vm_area_struct *vma,
 						struct vm_fault *vmf)
@@ -102,8 +111,13 @@ static const struct vm_operations_struct f2fs_file_vm_ops = {
 //	.remap_pages	= generic_file_remap_pages,
 };
 
-int f2fs_sync_file(struct file *file, loff_t start, loff_t end, int datasync)
+
+int f2fs_sync_file(struct file *file,struct dentry *d,int datasync)
 {
+	MDB("f2fs_sync_file:in\n");
+	loff_t start=0;
+	loff_t end=LLONG_MAX;
+
 	struct inode *inode = file->f_mapping->host;
 	struct f2fs_sb_info *sbi = F2FS_SB(inode->i_sb);
 	int ret = 0;
@@ -127,7 +141,7 @@ int f2fs_sync_file(struct file *file, loff_t start, loff_t end, int datasync)
 	/* guarantee free sections for fsync */
 	f2fs_balance_fs(sbi);
 
-	mutex_lock(&inode->i_mutex);
+//	mutex_lock(&inode->i_mutex);
 
 	if (datasync && !(inode->i_state & I_DIRTY_DATASYNC))
 		goto out;
@@ -147,7 +161,7 @@ int f2fs_sync_file(struct file *file, loff_t start, loff_t end, int datasync)
 	} else {
 		/* if there is no written node page, write its inode page */
 		while (!sync_node_pages(sbi, inode->i_ino, &wbc)) {
-			ret = f2fs_write_inode(inode, NULL);
+			ret = f2fs_write_inode(inode,0);
 			if (ret)
 				goto out;
 		}
@@ -156,8 +170,9 @@ int f2fs_sync_file(struct file *file, loff_t start, loff_t end, int datasync)
 		ret = blkdev_issue_flush(inode->i_sb->s_bdev,/* GFP_KERNEL,*/ NULL);
 	}
 out:
-	mutex_unlock(&inode->i_mutex);
+//	mutex_unlock(&inode->i_mutex);
 	//trace_f2fs_sync_file_exit(inode, need_cp, datasync, ret);
+	MDB("f2fs_sync_file:return.\n");
 	return ret;
 }
 
@@ -362,6 +377,8 @@ int f2fs_setattr(struct dentry *dentry, struct iattr *attr)
 	return err;
 }
 
+static long f2fs_fallocate(/*struct file *file*/struct inode *inode, int mode,
+                                loff_t offset, loff_t len);
 const struct inode_operations f2fs_file_inode_operations = {
 	.getattr	= f2fs_getattr,
 	.setattr	= f2fs_setattr,
@@ -372,6 +389,7 @@ const struct inode_operations f2fs_file_inode_operations = {
 	.listxattr	= f2fs_listxattr,
 	.removexattr	= generic_removexattr,
 #endif
+	.fallocate      = f2fs_fallocate,
 };
 
 static void fill_zero(struct inode *inode, pgoff_t index,
@@ -532,10 +550,10 @@ static int expand_inode_data(struct inode *inode, loff_t offset,
 	return ret;
 }
 
-static long f2fs_fallocate(struct file *file, int mode,
+static long f2fs_fallocate(/*struct file *file*/struct inode *inode, int mode,
 				loff_t offset, loff_t len)
 {
-	struct inode *inode = file_inode(file);
+//	struct inode *inode = file_inode(file);
 	long ret;
 
 	if (mode & ~(FALLOC_FL_KEEP_SIZE | FALLOC_FL_PUNCH_HOLE))

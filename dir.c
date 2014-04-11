@@ -1,4 +1,4 @@
-/*
+/*a
  * fs/f2fs/dir.c
  *
  * Copyright (c) 2012 Samsung Electronics Co., Ltd.
@@ -13,6 +13,13 @@
 #include "f2fs.h"
 #include "node.h"
 #include "acl.h"
+//#define MY_DEBUG
+
+#ifdef MY_DEBUG
+#define MDB(fmt, args...) if(printk_ratelimit())printk(KERN_DEBUG "MDB:" fmt,## args)
+#else
+#define MDB(fmt, args...) 
+#endif 
 
 static unsigned long dir_blocks(struct inode *inode)
 {
@@ -91,27 +98,34 @@ static struct f2fs_dir_entry *find_in_block(struct page *dentry_page,
 			const char *name, size_t namelen, int *max_slots,
 			f2fs_hash_t namehash, struct page **res_page)
 {
+	mydebug("find_in_block",0);
 	struct f2fs_dir_entry *de;
 	unsigned long bit_pos, end_pos, next_pos;
 	struct f2fs_dentry_block *dentry_blk = kmap(dentry_page);
 	int slots;
-
+	mydebug("find_in_block",1);
 	bit_pos = find_next_bit_le(&dentry_blk->dentry_bitmap,
 					NR_DENTRY_IN_BLOCK, 0);
+	mydebug("find_in_block",2);
 	while (bit_pos < NR_DENTRY_IN_BLOCK) {
 		de = &dentry_blk->dentry[bit_pos];
+	mydebug("find_in_block",3);
 		slots = GET_DENTRY_SLOTS(le16_to_cpu(de->name_len));
-
+		mydebug("find_in_block",4);
 		if (early_match_name(name, namelen, namehash, de)) {
+		mydebug("find_in_block",5);
 			if (!memcmp(dentry_blk->filename[bit_pos],
 							name, namelen)) {
+		mydebug("find_in_block",6);
 				*res_page = dentry_page;
 				goto found;
 			}
 		}
+		mydebug("find_in_block",7);
 		next_pos = bit_pos + slots;
 		bit_pos = find_next_bit_le(&dentry_blk->dentry_bitmap,
 				NR_DENTRY_IN_BLOCK, next_pos);
+		mydebug("find_in_block",8);
 		if (bit_pos >= NR_DENTRY_IN_BLOCK)
 			end_pos = NR_DENTRY_IN_BLOCK;
 		else
@@ -119,10 +133,11 @@ static struct f2fs_dir_entry *find_in_block(struct page *dentry_page,
 		if (*max_slots < end_pos - next_pos)
 			*max_slots = end_pos - next_pos;
 	}
-
+	mydebug("find_in_block",9);
 	de = NULL;
 	kunmap(dentry_page);
 found:
+	mydebug("find_in_block",10);
 	return de;
 }
 
@@ -130,45 +145,55 @@ static struct f2fs_dir_entry *find_in_level(struct inode *dir,
 		unsigned int level, const char *name, size_t namelen,
 			f2fs_hash_t namehash, struct page **res_page)
 {
+	mydebug("find_in_level",0);
 	int s = GET_DENTRY_SLOTS(namelen);
+	mydebug("find_in_level",1);
 	unsigned int nbucket, nblock;
 	unsigned int bidx, end_block;
 	struct page *dentry_page;
 	struct f2fs_dir_entry *de = NULL;
 	bool room = false;
 	int max_slots = 0;
-
+	
 	BUG_ON(level > MAX_DIR_HASH_DEPTH);
-
+	mydebug("find_in_level",2);
 	nbucket = dir_buckets(level);
+	mydebug("find_in_level",3);
 	nblock = bucket_blocks(level);
-
+	mydebug("find_in_level",4);
 	bidx = dir_block_index(level, le32_to_cpu(namehash) % nbucket);
 	end_block = bidx + nblock;
-
+	mydebug("find_in_level",5);
 	for (; bidx < end_block; bidx++) {
+		mydebug("find_in_level",6);
 		/* no need to allocate new dentry pages to all the indices */
 		dentry_page = find_data_page(dir, bidx, true);
+		mydebug("find_in_level",7);
 		if (IS_ERR(dentry_page)) {
+			mydebug("find_in_level",8);
 			room = true;
 			continue;
 		}
-
+		mydebug("find_in_level",9);
 		de = find_in_block(dentry_page, name, namelen,
 					&max_slots, namehash, res_page);
+		mydebug("find_in_level",10);
 		if (de)
 			break;
-
+		
 		if (max_slots >= s)
 			room = true;
+		mydebug("find_in_level",11);
 		f2fs_put_page(dentry_page, 0);
+		mydebug("find_in_level",12);
 	}
-
+	mydebug("find_in_level",13);
 	if (!de && room && F2FS_I(dir)->chash != namehash) {
+		mydebug("find_in_level",14);
 		F2FS_I(dir)->chash = namehash;
 		F2FS_I(dir)->clevel = level;
 	}
-
+	mydebug("find_in_level",16);
 	return de;
 }
 
@@ -181,35 +206,47 @@ static struct f2fs_dir_entry *find_in_level(struct inode *dir,
 struct f2fs_dir_entry *f2fs_find_entry(struct inode *dir,
 			struct qstr *child, struct page **res_page)
 {
+	mydebug("f2fs_find_entry",0);
 	const char *name = child->name;
 	size_t namelen = child->len;
+	mydebug("f2fs_find_entry",1);
 	unsigned long npages = dir_blocks(dir);
+	mydebug("f2fs_find_entry",2);
 	struct f2fs_dir_entry *de = NULL;
 	f2fs_hash_t name_hash;
 	unsigned int max_depth;
 	unsigned int level;
-
 	if (namelen > F2FS_NAME_LEN)
+	{
+		mydebug("f2fs_find_entry",-1);
 		return NULL;
+	}
 
 	if (npages == 0)
+	{
+		mydebug("f2fs_find_entry",-2);
 		return NULL;
+	}
 
 	*res_page = NULL;
-
+	mydebug("f2fs_find_entry",3);
 	name_hash = f2fs_dentry_hash(name, namelen);
+	mydebug("f2fs_find_entry",4);
 	max_depth = F2FS_I(dir)->i_current_depth;
-
+	mydebug("f2fs_find_entry",5);
 	for (level = 0; level < max_depth; level++) {
+		mydebug("f2fs_find_entry",6);
 		de = find_in_level(dir, level, name,
 				namelen, name_hash, res_page);
 		if (de)
 			break;
 	}
+	mydebug("f2fs_find_entry",7);
 	if (!de && F2FS_I(dir)->chash != name_hash) {
 		F2FS_I(dir)->chash = name_hash;
 		F2FS_I(dir)->clevel = level - 1;
 	}
+	mydebug("f2fs_find_entry",8);
 	return de;
 }
 
@@ -605,18 +642,47 @@ static int f2fs_readdir(struct file *file, void *dirent, filldir_t filldir)
 	unsigned int n = 0;
 	unsigned char d_type = DT_UNKNOWN;
 	int slots;
-
+	MDB("f2fs_readdir:pos=%ld\n",pos);
+	MDB("f2fs_readdir:npages=%ld\n",npages);
 	types = f2fs_filetype_table;
 	bit_pos = (pos % NR_DENTRY_IN_BLOCK);
 	n = (pos / NR_DENTRY_IN_BLOCK);
-
+	
 	for ( ; n < npages; n++) {
+	MDB("f2fs_readdir:n=%d\n",n);
+	MDB("f2fs_readdir:bit_pos=%d\n",bit_pos);
 		dentry_page = get_lock_data_page(inode, n);
 		if (IS_ERR(dentry_page))
 			continue;
 
 		start_bit_pos = bit_pos;
 		dentry_blk = kmap(dentry_page);
+#ifdef MY_DEBUG
+//print the dentry_bitmap
+static int my_p=0;
+if(my_p<5)
+{
+printk("-----------------begin-------------------\n");
+int sizeofchar=8;
+unsigned char test=1<<(sizeofchar-1);//128
+int my_i=0,my_j=0;
+for(;my_i<SIZE_OF_DENTRY_BITMAP;my_i++)
+{
+	unsigned char my_c=dentry_blk->dentry_bitmap[my_i];
+	for(my_j=0;my_j<sizeofchar;my_j++)
+	{
+		(test&my_c)==0?printk("0"):printk("1");
+		test=test>>1;	
+	}
+	test=1<<(sizeofchar-1);
+	printk(" ");
+	if(my_i%4==0&&my_i>0)
+		printk("\n");
+}
+printk("--------------end-------------------------\n");
+my_p++;
+}	
+#endif	
 		while (bit_pos < NR_DENTRY_IN_BLOCK) {
 			d_type = DT_UNKNOWN;
 			bit_pos = find_next_bit_le(&dentry_blk->dentry_bitmap,
@@ -624,11 +690,21 @@ static int f2fs_readdir(struct file *file, void *dirent, filldir_t filldir)
 							bit_pos);
 			if (bit_pos >= NR_DENTRY_IN_BLOCK)
 				break;
-
+#ifdef MY_DEBUG
+if(bit_pos==58)
+{
+	bit_pos=2;
+	if(my_p<5)
+		printk("Change 58 ot 2.\n");
+}
+#endif
 			de = &dentry_blk->dentry[bit_pos];
 			if (types && de->file_type < F2FS_FT_MAX)
 				d_type = types[de->file_type];
-
+			MDB("f2fs_readdir:filldir bit_pos=%d\n",bit_pos);
+			MDB("f2fs_readdir:filldir filename:%s\n",dentry_blk->filename[bit_pos]);
+			MDB("f2fs_readdir:filldir name_len:%d\n",de->name_len);
+			MDB("f2fs_readdir:filldir: slots:%d\n",GET_DENTRY_SLOTS(le16_to_cpu(de->name_len)));
 			over = filldir(dirent,
 					dentry_blk->filename[bit_pos],
 					le16_to_cpu(de->name_len),
@@ -652,7 +728,7 @@ success:
 		kunmap(dentry_page);
 		f2fs_put_page(dentry_page, 1);
 	}
-
+	MDB("f2fs_readdir exit.\n");
 	return 0;
 }
 

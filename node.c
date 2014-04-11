@@ -20,6 +20,14 @@
 #include "node.h"
 #include "segment.h"
 //#include <trace/events/f2fs.h>
+//#define MY_DEBUG
+
+#ifdef MY_DEBUG
+#define MDB(fmt, args...) printk(KERN_EMERG "MDB:" fmt,## args)
+#else
+#define MDB(fmt, args...) 
+#endif
+
 
 static struct kmem_cache *nat_entry_slab;
 static struct kmem_cache *free_nid_slab;
@@ -1216,6 +1224,7 @@ static void f2fs_invalidate_node_page(struct page *page, unsigned long offset)
 
 static int f2fs_release_node_page(struct page *page, gfp_t wait)
 {
+	MDB("f2fs_release_node_page\n");
 	ClearPagePrivate(page);
 	return 1;
 }

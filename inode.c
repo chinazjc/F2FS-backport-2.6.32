@@ -214,7 +214,7 @@ int update_inode_page(struct inode *inode)
 	return 0;
 }
 
-int f2fs_write_inode(struct inode *inode, struct writeback_control *wbc)
+int f2fs_write_inode(struct inode *inode, int wait)
 {
 	struct f2fs_sb_info *sbi = F2FS_SB(inode->i_sb);
 	int ret, ilock;
@@ -223,7 +223,7 @@ int f2fs_write_inode(struct inode *inode, struct writeback_control *wbc)
 			inode->i_ino == F2FS_META_INO(sbi))
 		return 0;
 
-	if (wbc)
+	if (wait)
 		f2fs_balance_fs(sbi);
 
 	/*

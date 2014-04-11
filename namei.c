@@ -19,6 +19,15 @@
 #include "xattr.h"
 #include "acl.h"
 //#include <trace/events/f2fs.h>
+#include <linux/delay.h>
+#include <linux/fsnotify.h>
+//#define MY_DEBUG
+
+#ifdef MY_DEBUG
+#define MDB(fmt, args...) printk(KERN_EMERG "MDB:" fmt,## args)//;ssleep(10)
+#else
+#define MDB(fmt, args...) 
+#endif
 
 static struct inode *f2fs_new_inode(struct inode *dir, umode_t mode)
 {
@@ -118,8 +127,8 @@ static inline void set_cold_files(struct f2fs_sb_info *sbi, struct inode *inode,
 	}
 }
 
-static int f2fs_create(struct inode *dir, struct dentry *dentry, umode_t mode,
-						bool excl)
+static int f2fs_create(struct inode *dir, struct dentry *dentry,int  mode,
+					struct nameidata *nd)
 {
 	struct super_block *sb = dir->i_sb;
 	struct f2fs_sb_info *sbi = F2FS_SB(sb);
@@ -207,7 +216,7 @@ struct dentry *f2fs_get_parent(struct dentry *child)
 }
 
 static struct dentry *f2fs_lookup(struct inode *dir, struct dentry *dentry,
-		unsigned int flags)
+		struct nameidata *nd)
 {
 	struct inode *inode = NULL;
 	struct f2fs_dir_entry *de;
@@ -239,30 +248,42 @@ static int f2fs_unlink(struct inode *dir, struct dentry *dentry)
 	struct page *page;
 	int err = -ENOENT;
 	int ilock;
-
+	
+	MDB("f2fs_unlink:0,sbi=%0x\n",sbi);	
 	//trace_f2fs_unlink_enter(dir, dentry);
 	f2fs_balance_fs(sbi);
-
+	MDB("f2fs_unlink:1\n");
 	de = f2fs_find_entry(dir, &dentry->d_name, &page);
+	MDB("f2fs_unlink:2,de=%0x\n",de);
 	if (!de)
+	{
+		MDB("f2fs_unlink:3-1,!de, goto fail.\n");
 		goto fail;
-
+	}
 	err = check_orphan_space(sbi);
+	MDB("f2fs_unlink:3-2,err=%d\n",err);
 	if (err) {
+	MDB("f2fs_unlink:4-1,if(err)\n");
 		kunmap(page);
+	MDB("f2fs_unlink:4-2\n");
 		f2fs_put_page(page, 0);
+	MDB("f2fs_unlink:4-3, goto fail.\n");
 		goto fail;
 	}
 
 	ilock = mutex_lock_op(sbi);
+	MDB("f2fs_unlink:5,ilock=%d\n",ilock);
 	f2fs_delete_entry(de, page, inode);
+	MDB("f2fs_unlink:6\n");
 	mutex_unlock_op(sbi, ilock);
-
+	MDB("f2fs_unlink:7\n");
 	/* In order to evict this inode,  we set it dirty */
 	mark_inode_dirty(inode);
+	MDB("f2fs_unlink:8 begin sleep \n");
 fail:
-	//trace_f2fs_unlink_exit(inode, err);
-	return err;
+	MDB("f2fs_unlink:after sleep return then sleep 20 \n");
+	MDB("f2fs_unlink:return.%d\n",err);
+return err;
 }
 
 static int f2fs_symlink(struct inode *dir, struct dentry *dentry,
@@ -304,7 +325,7 @@ out:
 	return err;
 }
 
-static int f2fs_mkdir(struct inode *dir, struct dentry *dentry, umode_t mode)
+static int f2fs_mkdir(struct inode *dir, struct dentry *dentry,int mode)
 {
 	struct f2fs_sb_info *sbi = F2FS_SB(dir->i_sb);
 	struct inode *inode;
@@ -354,7 +375,7 @@ static int f2fs_rmdir(struct inode *dir, struct dentry *dentry)
 }
 
 static int f2fs_mknod(struct inode *dir, struct dentry *dentry,
-				umode_t mode, dev_t rdev)
+				int mode, dev_t rdev)
 {
 	struct super_block *sb = dir->i_sb;
 	struct f2fs_sb_info *sbi = F2FS_SB(sb);

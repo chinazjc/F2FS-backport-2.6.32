@@ -23,6 +23,13 @@
 #include "node.h"
 #include "segment.h"
 //#include <trace/events/f2fs.h>
+//#define MY_DEBUG
+
+#ifdef MY_DEBUG
+#define MDB(fmt, args...) printk(KERN_EMERG "MDB:" fmt,## args)
+#else
+#define MDB(fmt, args...) 
+#endif
 
 /*
  * Lock ordering for the change of data block address:
@@ -711,6 +718,7 @@ static void f2fs_invalidate_data_page(struct page *page, unsigned long offset)
 
 static int f2fs_release_data_page(struct page *page, gfp_t wait)
 {
+	MDB("f2fs_release_data_page\n");
 	ClearPagePrivate(page);
 	return 1;
 }

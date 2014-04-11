@@ -129,6 +129,18 @@ static inline int update_sits_in_cursum(struct f2fs_summary_block *rs, int i)
 }
 
 //zjc add
+
+#define CONFIG_F2FS_STAT_FS
+static inline void mydb(char *source,int line)
+{
+//	printk(KERN_EMERG "%s:%d\n",source,line);
+}
+
+static inline void mydebug(char* source,int line)
+{
+//	if(printk_ratelimit())
+//		printk(KERN_DEBUG "%s:%d\n",source,line);
+}
 static inline void* vzalloc(unsigned long size)
 {
     return __vmalloc(size,GFP_KERNEL | __GFP_HIGHMEM | __GFP_ZERO,PAGE_KERNEL);
@@ -140,7 +152,11 @@ static inline  unsigned long find_next_bit_le(const void *addr, unsigned long si
 }
 static inline int test_and_set_bit_le(int nr, void *addr)
 {
+#ifdef __BIG_ENDIAN
      return test_and_set_bit(nr ^ BITOP_LE_SWIZZLE, addr);
+#else 
+     return test_and_set_bit(nr, addr);
+#endif 
 }
 static inline unsigned long find_next_zero_bit_le(const void *addr, unsigned
           long size, unsigned long offset)
@@ -149,7 +165,11 @@ static inline unsigned long find_next_zero_bit_le(const void *addr, unsigned
 }
 static inline int test_and_clear_bit_le(int nr, void *addr)
 {
+#ifdef __BIG_ENDIAN
      return test_and_clear_bit(nr ^ BITOP_LE_SWIZZLE, addr);
+#else
+     return test_and_clear_bit(nr, addr);
+#endif
 }
 static inline struct inode *file_inode(struct file *f)
 {
@@ -1138,7 +1158,7 @@ static inline int cond_clear_inode_flag(struct f2fs_inode_info *fi, int flag)
 /*
  * file.c
  */
-int f2fs_sync_file(struct file *, loff_t, loff_t, int);
+int f2fs_sync_file(struct file *, struct dentry*, int);
 void truncate_data_blocks(struct dnode_of_data *);
 void f2fs_truncate(struct inode *);
 int f2fs_setattr(struct dentry *, struct iattr *);
@@ -1153,7 +1173,7 @@ void f2fs_set_inode_flags(struct inode *);
 struct inode *f2fs_iget(struct super_block *, unsigned long);
 void update_inode(struct inode *, struct page *);
 int update_inode_page(struct inode *);
-int f2fs_write_inode(struct inode *, struct writeback_control *);
+int f2fs_write_inode(struct inode *, int);
 void f2fs_evict_inode(struct inode *);
 
 /*
