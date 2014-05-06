@@ -26,6 +26,27 @@
 
 static struct kmem_cache *winode_slab;
 
+static inline bool excess_prefree_segs(struct f2fs_sb_info *sbi)
+{
+    printk(KERN_ERR "excess_prefree_segs: pre=%u\n",prefree_segments(sbi));
+    return (prefree_segments(sbi) > 100); //200MB
+}
+
+void f2fs_balance_fs_bg(struct f2fs_sb_info *sbi)
+{
+	printk(KERN_ERR "f2fs: f2fs_balance_fs_bg.\n");
+    /* check the # of cached NAT entries and prefree segments */
+    if (try_to_free_nats(sbi, NAT_ENTRY_PER_BLOCK) ||
+                excess_prefree_segs(sbi))
+    {
+	printk(KERN_ERR "f2fs_balance_fs_bg: f2fs_sync.\n");
+        f2fs_sync_fs(sbi->sb, true);
+    }
+    else
+  	printk(KERN_ERR "f2fs_balance_fs_bg: not sync.\n");
+}
+
+
 static int gc_thread_func(void *data)
 {
 	struct f2fs_sb_info *sbi = data;
@@ -81,6 +102,11 @@ static int gc_thread_func(void *data)
 		/* if return value is not zero, no victim was selected */
 		if (f2fs_gc(sbi))
 			wait_ms = GC_THREAD_NOGC_SLEEP_TIME;
+#ifdef NO_PRE
+		f2fs_balance_fs_bg(sbi);
+#endif 
+
+		printk(KERN_ERR "FINISH ONE GC\n");
 	} while (!kthread_should_stop());
 	return 0;
 }
@@ -407,8 +433,12 @@ next_step:
 
 		/* set page dirty and write it */
 		if (gc_type == FG_GC) {
+#ifdef NEW_WAIT
+			f2fs_wait_on_page_writeback(node_page, NODE, true);
+#else
 			f2fs_submit_bio(sbi, NODE, true);
 			wait_on_page_writeback(node_page);
+#endif
 			set_page_dirty(node_page);
 		} else {
 			if (!PageWriteback(node_page))
@@ -508,10 +538,14 @@ static void move_data_page(struct inode *inode, struct page *page, int gc_type)
 	} else {
 		struct f2fs_sb_info *sbi = F2FS_SB(inode->i_sb);
 
+#ifdef NEW_WAIT
+		f2fs_wait_on_page_writeback(page, DATA, true);
+#else
 		if (PageWriteback(page)) {
 			f2fs_submit_bio(sbi, DATA, true);
 			wait_on_page_writeback(page);
 		}
+#endif
 
 		if (clear_page_dirty_for_io(page) &&
 			S_ISDIR(inode->i_mode)) {
@@ -690,7 +724,7 @@ gc_more:
 
 	for (i = 0; i < sbi->segs_per_sec; i++)
 		do_garbage_collect(sbi, segno + i, &ilist, gc_type);
-
+	printk(KERN_ERR "F2FS: f2fs_gc %u segment. segno=%u\n",i,segno);
 	if (gc_type == FG_GC) {
 		sbi->cur_victim_sec = NULL_SEGNO;
 		nfree++;

@@ -544,7 +544,12 @@ static inline void check_block_count(struct f2fs_sb_info *sbi,
 
 	/* check segment usage */
 	BUG_ON(GET_SIT_VBLOCKS(raw_sit) > sbi->blocks_per_seg);
-
+/*
+	if(GET_SIT_VBLOCKS(raw_sit) > sbi->blocks_per_seg)
+	{
+		printk(KERN_ERR "F2FS_DEBUG1: GET_SIT_VBLOCKS(raw_sit)=%d > sbi->blocks_per_seg=%d  segno=%d\n",GET_SIT_VBLOCKS(raw_sit),sbi->blocks_per_seg,segno);
+	}
+*/
 	/* check boundary of a given segment number */
 	BUG_ON(segno > end_segno);
 
@@ -552,7 +557,14 @@ static inline void check_block_count(struct f2fs_sb_info *sbi,
 	for (i = 0; i < sbi->blocks_per_seg; i++)
 		if (f2fs_test_bit(i, raw_sit->valid_map))
 			valid_blocks++;
+
 	BUG_ON(GET_SIT_VBLOCKS(raw_sit) != valid_blocks);
+/*
+	if(GET_SIT_VBLOCKS(raw_sit) != valid_blocks)
+	{
+		printk(KERN_ERR "F2FS_DEBUG2: GET_SIT_VBLOCKS(raw_sit)=%d  valid_blocks=%d  segno=%d\n",GET_SIT_VBLOCKS(raw_sit),valid_blocks,segno);
+	}
+*/
 }
 
 static inline pgoff_t current_sit_addr(struct f2fs_sb_info *sbi,

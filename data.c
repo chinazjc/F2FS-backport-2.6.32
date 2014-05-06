@@ -44,7 +44,11 @@ static void __set_data_blkaddr(struct dnode_of_data *dn, block_t new_addr)
 	struct page *node_page = dn->node_page;
 	unsigned int ofs_in_node = dn->ofs_in_node;
 
+#ifdef NEW_WAIT
+	f2fs_wait_on_page_writeback(node_page, NODE, false);
+#else
 	wait_on_page_writeback(node_page);
+#endif
 
 	rn = (struct f2fs_node *)page_address(node_page);
 

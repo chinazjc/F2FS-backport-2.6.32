@@ -120,6 +120,45 @@ void locate_dirty_segment(struct f2fs_sb_info *sbi, unsigned int segno)
 	mutex_unlock(&dirty_i->seglist_lock);
 	return;
 }
+#if 0
+static void print_PRE(struct f2fs_sb_info *sbi)
+{
+	unsigned long len=BITS_TO_LONGS(TOTAL_SEGS(sbi));
+	struct dirty_seglist_info *dirty_i = DIRTY_I(sbi);
+	printk(KERN_ERR "PRE_MAP len =% lu  dirty=%u\n",len,dirty_i->nr_dirty[PRE]);
+	unsigned long i;
+	for(i=0;i<len;i++)
+		printk(KERN_ERR "%lu ",dirty_i->dirty_segmap[PRE][i]);
+}
+
+static int check_PRE(struct f2fs_sb_info *sbi) // 1 ok   0 bad
+{
+	struct dirty_seglist_info *dirty_i = DIRTY_I(sbi);
+	int dirty,sum;
+	unsigned int offset=0,segno;
+	mutex_lock(&dirty_i->seglist_lock);
+	dirty=dirty_i->nr_dirty[PRE];
+	offset=0;
+	sum=0;
+	while(1)
+	{
+		segno=find_next_bit(dirty_i->dirty_segmap[PRE], TOTAL_SEGS(sbi),offset);
+		if (segno >= TOTAL_SEGS(sbi))
+			break;
+		sum++;
+		offset = segno + 1;
+	}
+	mutex_unlock(&dirty_i->seglist_lock);
+	if(dirty != sum)
+	{
+		printk(KERN_ERR "Find Error: dirty=%d  sum=%d\n",dirty,sum);
+		return 0;
+	}
+
+	return 1;
+}
+#endif
+
 
 /*
  * Should call clear_prefree_segments after checkpoint is done.
@@ -153,20 +192,28 @@ void clear_prefree_segments(struct f2fs_sb_info *sbi)
 		segno = find_next_bit(dirty_i->dirty_segmap[PRE], total_segs,
 				offset);
 		if (segno >= total_segs)
+		{
+			printk(KERN_ERR "f2fs: no pre to discard!\n");
 			break;
-
+		}
 		offset = segno + 1;
 		if (test_and_clear_bit(segno, dirty_i->dirty_segmap[PRE]))
 			dirty_i->nr_dirty[PRE]--;
 
 		/* Let's use trim */
 		if (test_opt(sbi, DISCARD))
+		{
+			printk(KERN_ERR "f2fs: discard:lpn=%u  len=%u\n",(START_BLOCK(sbi, segno) <<sbi->log_sectors_per_block)/16,
+                             ( 1 << (sbi->log_sectors_per_block + sbi->log_blocks_per_seg))/16 );
 			blkdev_issue_discard(sbi->sb->s_bdev,
 					START_BLOCK(sbi, segno) <<
 					sbi->log_sectors_per_block,
 					1 << (sbi->log_sectors_per_block +
 						sbi->log_blocks_per_seg),
 					GFP_NOFS, 0);
+		}
+		else
+			printk(KERN_ERR "Not support Trim!\n");
 	}
 	mutex_unlock(&dirty_i->seglist_lock);
 }
@@ -324,39 +371,48 @@ static unsigned int check_prefree_segments(struct f2fs_sb_info *sbi, int type)
 	 * we should not reuse prefree segments.
 	 */
 	if (has_not_enough_free_secs(sbi, 0))
+	{
 		return NULL_SEGNO;
-
+	}
 	/*
 	 * NODE page should not reuse prefree segment,
 	 * since those information is used for SPOR.
 	 */
 	if (IS_NODESEG(type))
+	{
 		return NULL_SEGNO;
+	}
+
+	unsigned int pre_segs=prefree_segments(sbi);
 next:
 	segno = find_next_bit(prefree_segmap, TOTAL_SEGS(sbi), ofs);
-	ofs += sbi->segs_per_sec;
-
+//	ofs += sbi->segs_per_sec;
+	ofs = (segno/sbi->segs_per_sec +1)*sbi->segs_per_sec ;
 	if (segno < TOTAL_SEGS(sbi)) {
 		int i;
 
 		/* skip intermediate segments in a section */
 		if (segno % sbi->segs_per_sec)
+		{
 			goto next;
-
+		}
 		/* skip if the section is currently used */
 		if (sec_usage_check(sbi, GET_SECNO(sbi, segno)))
+		{	
 			goto next;
-
+		}
 		/* skip if whole section is not prefree */
 		for (i = 1; i < sbi->segs_per_sec; i++)
 			if (!test_bit(segno + i, prefree_segmap))
+		{
 				goto next;
-
+		}
 		/* skip if whole section was not free at the last checkpoint */
 		for (i = 0; i < sbi->segs_per_sec; i++)
 			if (get_seg_entry(sbi, segno + i)->ckpt_valid_blocks)
+		{
 				goto next;
-
+		}
 		return segno;
 	}
 	return NULL_SEGNO;
@@ -380,6 +436,7 @@ static int is_next_segment_free(struct f2fs_sb_info *sbi, int type)
 static void get_new_segment(struct f2fs_sb_info *sbi,
 			unsigned int *newseg, bool new_sec, int dir)
 {
+//	unsigned int oldseg= *newseg;
 	struct free_segmap_info *free_i = FREE_I(sbi);
 	unsigned int segno, secno, zoneno;
 	unsigned int total_zones = TOTAL_SECS(sbi) / sbi->secs_per_zone;
@@ -464,6 +521,12 @@ got_it:
 	__set_inuse(sbi, segno);
 	*newseg = segno;
 	write_unlock(&free_i->segmap_lock);
+/*	
+	if(dir == ALLOC_RIGHT)
+		printk(KERN_ERR "ALLOC_RIGHT: oldseg=%u  newseg=%u\n",oldseg,*newseg);	
+	else
+		printk(KERN_ERR "ALLOC_LEFT : oldseg=%u  newseg=%u\n",oldseg,*newseg);
+*/
 }
 
 static void reset_curseg(struct f2fs_sb_info *sbi, int type, int modified)
@@ -590,26 +653,35 @@ static int get_ssr_segment(struct f2fs_sb_info *sbi, int type)
  * flush out current segment and replace it with new segment
  * This function should be returned with success, otherwise BUG
  */
+
 static void allocate_segment_by_default(struct f2fs_sb_info *sbi,
 						int type, bool force)
 {
 	struct curseg_info *curseg = CURSEG_I(sbi, type);
-
 	if (force) {
 		new_curseg(sbi, type, true);
 		goto out;
 	}
-
+#ifndef NO_PRE
 	curseg->next_segno = check_prefree_segments(sbi, type);
 
 	if (curseg->next_segno != NULL_SEGNO)
+	{
 		change_curseg(sbi, type, false);
+		//printk(KERN_ERR "F2FS : USE PRE.\n");
+	}
+#endif
 	else if (type == CURSEG_WARM_NODE)
 		new_curseg(sbi, type, false);
 	else if (curseg->alloc_type == LFS && is_next_segment_free(sbi, type))
 		new_curseg(sbi, type, false);
+#ifndef NO_SSR
 	else if (need_SSR(sbi) && get_ssr_segment(sbi, type))
+	{
+		printk(KERN_ERR "F2FS: allocate SSR segment!\n");
 		change_curseg(sbi, type, true);
+	}
+#endif
 	else
 		new_curseg(sbi, type, false);
 out:
@@ -730,8 +802,9 @@ static void submit_write_page(struct f2fs_sb_info *sbi, struct page *page,
 	down_write(&sbi->bio_sem);
 
 	inc_page_count(sbi, F2FS_WRITEBACK);
-
+#ifndef NO_CACHE_BIO
 	if (sbi->bio[type] && sbi->last_block_in_bio[type] != blk_addr - 1)
+#endif
 		do_submit_bio(sbi, type, false);
 alloc_new:
 	if (sbi->bio[type] == NULL) {
@@ -755,6 +828,18 @@ alloc_new:
 	up_write(&sbi->bio_sem);
 	//trace_f2fs_submit_write_page(page, blk_addr, type);
 }
+
+
+void f2fs_wait_on_page_writeback(struct page *page,
+				enum page_type type, bool sync)
+{
+	struct f2fs_sb_info *sbi = F2FS_SB(page->mapping->host->i_sb);
+	if (PageWriteback(page)) {
+		f2fs_submit_bio(sbi, type, sync);
+		wait_on_page_writeback(page);
+	}
+}
+
 
 static bool __has_curseg_space(struct f2fs_sb_info *sbi, int type)
 {

@@ -6,7 +6,7 @@ f2fs-y += debug.o
 #f2fs-y += xattr.o
 #f2fs-y += acl.o
 all:
-	    make -C /lib/modules/$(shell uname -r)/build M=$(PWD) modules
+	make -C /lib/modules/$(shell uname -r)/build M=$(PWD) modules
 
 clean:
-	    make -C /lib/modules/$(shell uname -r)/build M=$(PWD) clean
+	make -C /lib/modules/$(shell uname -r)/build M=$(PWD) clean

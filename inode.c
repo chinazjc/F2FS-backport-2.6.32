@@ -157,7 +157,11 @@ void update_inode(struct inode *inode, struct page *node_page)
 	struct f2fs_node *rn;
 	struct f2fs_inode *ri;
 
+#ifdef NEW_WAIT
+	f2fs_wait_on_page_writeback(node_page, NODE, false);
+#else
 	wait_on_page_writeback(node_page);
+#endif
 
 	rn = page_address(node_page);
 	ri = &(rn->i);
@@ -214,7 +218,7 @@ int update_inode_page(struct inode *inode)
 	return 0;
 }
 
-int f2fs_write_inode(struct inode *inode, int wait)
+int f2fs_write_inode(struct inode *inode, struct writeback_control *wbc)
 {
 	struct f2fs_sb_info *sbi = F2FS_SB(inode->i_sb);
 	int ret, ilock;
@@ -223,13 +227,13 @@ int f2fs_write_inode(struct inode *inode, int wait)
 			inode->i_ino == F2FS_META_INO(sbi))
 		return 0;
 
-	if (wait)
+	if (wbc)
 		f2fs_balance_fs(sbi);
 
 	/*
-	 * We need to lock here to prevent from producing dirty node pages
-	 * during the urgent cleaning time when runing out of free sections.
-	 */
+ * 	 * We need to lock here to prevent from producing dirty node pages
+ * 	 	 * during the urgent cleaning time when runing out of free sections.
+ * 	 	 	 */
 	ilock = mutex_lock_op(sbi);
 	ret = update_inode_page(inode);
 	mutex_unlock_op(sbi, ilock);

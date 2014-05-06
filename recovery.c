@@ -263,7 +263,11 @@ static int do_recover_data(struct f2fs_sb_info *sbi, struct inode *inode,
 		return err;
 	}
 
+#ifdef NEW_WAIT
+	f2fs_wait_on_page_writeback(dn.node_page, NODE,false);
+#else
 	wait_on_page_writeback(dn.node_page);
+#endif
 
 	get_node_info(sbi, dn.nid, &ni);
 	BUG_ON(ni.ino != ino_of_node(page));

@@ -33,14 +33,24 @@ struct page *grab_meta_page(struct f2fs_sb_info *sbi, pgoff_t index)
 	struct address_space *mapping = sbi->meta_inode->i_mapping;
 	struct page *page = NULL;
 repeat:
+
+#ifdef NEW_WAIT 
+	page = grab_cache_page_write_begin(mapping, index, 0);
+#else
 	page = grab_cache_page(mapping, index);
+#endif
+
 	if (!page) {
 		cond_resched();
 		goto repeat;
 	}
 
 	/* We wait writeback only inside grab_meta_page() */
+#ifdef NEW_WAIT
+#else
 	wait_on_page_writeback(page);
+#endif
+
 	SetPageUptodate(page);
 	return page;
 }
@@ -89,8 +99,11 @@ static int f2fs_write_meta_page(struct page *page,
 		return AOP_WRITEPAGE_ACTIVATE;
 	}
 
+#ifdef NEW_WAIT
+	f2fs_wait_on_page_writeback(page, META,false);
+#else
 	wait_on_page_writeback(page);
-
+#endif
 	write_meta_page(sbi, page);
 	dec_page_count(sbi, F2FS_DIRTY_META);
 	unlock_page(page);
@@ -725,7 +738,8 @@ void write_checkpoint(struct f2fs_sb_info *sbi, bool is_umount)
 	unsigned long long ckpt_ver;
 
 	//trace_f2fs_write_checkpoint(sbi->sb, is_umount, "start block_ops");
-
+	printk(KERN_ERR "Start Write Checkpoint!\n");
+	
 	mutex_lock(&sbi->cp_mutex);
 	block_operations(sbi);
 
@@ -752,7 +766,8 @@ void write_checkpoint(struct f2fs_sb_info *sbi, bool is_umount)
 
 	unblock_operations(sbi);
 	mutex_unlock(&sbi->cp_mutex);
-
+	
+	printk(KERN_ERR "Finish Write Checkpoint!\n");
 	//trace_f2fs_write_checkpoint(sbi->sb, is_umount, "finish checkpoint");
 }
 

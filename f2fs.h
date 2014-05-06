@@ -50,8 +50,15 @@
 		typecheck(unsigned long long, b) &&			\
 		((long long)((a) - (b)) > 0))
 
-#define WRITE_FLUSH_FUA         (WRITE_SYNC | REQ_FUA)
-#define REQ_META                (1 << __REQ_RW_META)
+//#define WRITE_FLUSH_FUA         (WRITE_SYNC | REQ_FUA)
+#define REQ_META                 (1 << __REQ_META)
+
+
+#define NO_PRE
+//#define NO_SSR
+//#define NO_CACHE_BIO
+
+#define NEW_WAIT
 
 typedef u64 block_t;
 typedef u32 nid_t;
@@ -59,11 +66,12 @@ typedef u32 nid_t;
 struct f2fs_mount_info {
 	unsigned int	opt;
 };
+/*
 struct va_format {
         const char *fmt;
             va_list *va;
 };
-
+*/
 struct inode_rcu {
     struct rcu_head i_rcu;
     struct inode * inode;
@@ -141,11 +149,12 @@ static inline void mydebug(char* source,int line)
 //	if(printk_ratelimit())
 //		printk(KERN_DEBUG "%s:%d\n",source,line);
 }
+/*
 static inline void* vzalloc(unsigned long size)
 {
     return __vmalloc(size,GFP_KERNEL | __GFP_HIGHMEM | __GFP_ZERO,PAGE_KERNEL);
 }
-
+*/
 static inline  unsigned long find_next_bit_le(const void *addr, unsigned long size, unsigned long offset)
 {
     return generic_find_next_le_bit(addr,size,offset);
@@ -230,6 +239,7 @@ static inline void sb_end_pagefault(struct super_block *sb)
 {
       //  __sb_end_write(sb, SB_FREEZE_PAGEFAULT);
 }
+/*
 static inline int block_page_mkwrite_return(int err)
 {
         if (err == 0)
@@ -240,7 +250,6 @@ static inline int block_page_mkwrite_return(int err)
                             return VM_FAULT_OOM;
                     if (err == -EAGAIN)
                                 return VM_FAULT_RETRY;
-                        /* -ENOSPC, -EDQUOT, -EIO ... */
                         return VM_FAULT_SIGBUS;
 }
 static inline void truncate_setsize(struct inode *inode, loff_t newsize)
@@ -252,9 +261,9 @@ static inline void truncate_setsize(struct inode *inode, loff_t newsize)
 
                     truncate_pagecache(inode, oldsize, newsize);
 }
+*/
 
-
-static inline void setattr_copy(struct inode *inode, const struct iattr *attr)
+static inline void setattr_copy(struct inode *inode, struct iattr *attr)
 {
     inode_setattr(inode,attr);//mk_inode_dirty
 }
@@ -1173,7 +1182,7 @@ void f2fs_set_inode_flags(struct inode *);
 struct inode *f2fs_iget(struct super_block *, unsigned long);
 void update_inode(struct inode *, struct page *);
 int update_inode_page(struct inode *);
-int f2fs_write_inode(struct inode *, int);
+int f2fs_write_inode(struct inode *, struct writeback_control *);
 void f2fs_evict_inode(struct inode *);
 
 /*
@@ -1219,7 +1228,7 @@ f2fs_hash_t f2fs_dentry_hash(const char *, size_t);
  */
 struct dnode_of_data;
 struct node_info;
-
+int try_to_free_nats(struct f2fs_sb_info *sbi, int nr_shrink);
 int is_checkpointed_node(struct f2fs_sb_info *, nid_t);
 void get_node_info(struct f2fs_sb_info *, nid_t, struct node_info *);
 int get_dnode_of_data(struct dnode_of_data *, pgoff_t, int);
@@ -1258,6 +1267,7 @@ void allocate_new_segments(struct f2fs_sb_info *);
 struct page *get_sum_page(struct f2fs_sb_info *, unsigned int);
 struct bio *f2fs_bio_alloc(struct block_device *, int);
 void f2fs_submit_bio(struct f2fs_sb_info *, enum page_type, bool sync);
+void f2fs_wait_on_page_writeback(struct page *, enum page_type, bool);
 void write_meta_page(struct f2fs_sb_info *, struct page *);
 void write_node_page(struct f2fs_sb_info *, struct page *, unsigned int,
 					block_t, block_t *);
@@ -1316,7 +1326,7 @@ int f2fs_gc(struct f2fs_sb_info *);
 void build_gc_manager(struct f2fs_sb_info *);
 int __init create_gc_caches(void);
 void destroy_gc_caches(void);
-
+void f2fs_balance_fs_bg(struct f2fs_sb_info *sbi);
 /*
  * recovery.c
  */

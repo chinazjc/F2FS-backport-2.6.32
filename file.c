@@ -88,8 +88,11 @@ static int f2fs_vm_page_mkwrite(struct vm_area_struct *vma,
 		goto out;
 
 	/* fill the page */
+#ifdef NEW_WAIT
+	f2fs_wait_on_page_writeback(page, DATA,false);
+#else
 	wait_on_page_writeback(page);
-
+#endif
 	/* page is wholly or partially inside EOF */
 	if (((page->index + 1) << PAGE_CACHE_SHIFT) > i_size_read(inode)) {
 		unsigned offset;
@@ -165,9 +168,14 @@ int f2fs_sync_file(struct file *file,struct dentry *d,int datasync)
 			if (ret)
 				goto out;
 		}
+#ifdef NEW_WAIT
+		f2fs_submit_bio(sbi,NODE,false);
+#endif
 		filemap_fdatawait_range(sbi->node_inode->i_mapping,
 							0, LONG_MAX);
+		//printk(KERN_ERR "F2FS: f2fs_sync_file: before issue_flush.\n");
 		ret = blkdev_issue_flush(inode->i_sb->s_bdev,/* GFP_KERNEL,*/ NULL);
+ 		//printk(KERN_ERR "F2FS: f2fs_sync_file: after issue_flush.\n");
 	}
 out:
 //	mutex_unlock(&inode->i_mutex);
@@ -236,7 +244,11 @@ static void truncate_partial_data_page(struct inode *inode, u64 from)
 		f2fs_put_page(page, 1);
 		return;
 	}
+#ifdef NEW_WAIT
+	f2fs_wait_on_page_writeback(page, DATA,false);
+#else
 	wait_on_page_writeback(page);
+#endif
 	zero_user(page, offset, PAGE_CACHE_SIZE - offset);
 	set_page_dirty(page);
 	f2fs_put_page(page, 1);
@@ -409,7 +421,11 @@ static void fill_zero(struct inode *inode, pgoff_t index,
 	mutex_unlock_op(sbi, ilock);
 
 	if (!IS_ERR(page)) {
+#ifdef NEW_WAIT
+		f2fs_wait_on_page_writeback(page, DATA,false);
+#else
 		wait_on_page_writeback(page);
+#endif
 		zero_user(page, start, len);
 		set_page_dirty(page);
 		f2fs_put_page(page, 1);

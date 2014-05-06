@@ -248,7 +248,7 @@ retry:
 	write_unlock(&nm_i->nat_tree_lock);
 }
 
-static int try_to_free_nats(struct f2fs_sb_info *sbi, int nr_shrink)
+int try_to_free_nats(struct f2fs_sb_info *sbi, int nr_shrink)
 {
 	struct f2fs_nm_info *nm_i = NM_I(sbi);
 
@@ -761,7 +761,11 @@ skip_partial:
 				f2fs_put_page(page, 1);
 				goto restart;
 			}
+#ifdef NEW_WAIT
+			f2fs_wait_on_page_writeback(page, NODE,false);
+#else
 			wait_on_page_writeback(page);
+#endif
 			rn->i.i_nid[offset[0] - NODE_DIR1_BLOCK] = 0;
 			set_page_dirty(page);
 			unlock_page(page);
@@ -836,8 +840,11 @@ struct page *new_node_page(struct dnode_of_data *dn, unsigned int ofs)
 
 	if (is_inode_flag_set(F2FS_I(dn->inode), FI_NO_ALLOC))
 		return ERR_PTR(-EPERM);
-
+#ifdef NEW_WAIT
+	page = grab_cache_page_write_begin(mapping, dn->nid, 0);
+#else
 	page = grab_cache_page(mapping, dn->nid);
+#endif
 	if (!page)
 		return ERR_PTR(-ENOMEM);
 
@@ -930,7 +937,11 @@ struct page *get_node_page(struct f2fs_sb_info *sbi, pgoff_t nid)
 	struct page *page;
 	int err;
 repeat:
+#ifdef NEW_WAIT
+	page = grab_cache_page_write_begin(mapping, nid, 0);
+#else
 	page = grab_cache_page(mapping, nid);
+#endif
 	if (!page)
 		return ERR_PTR(-ENOMEM);
 
@@ -1137,7 +1148,14 @@ static int f2fs_write_node_page(struct page *page,
 	block_t new_addr;
 	struct node_info ni;
 
+#ifdef NEW_WAIT
+	if (unlikely(sbi->por_doing))
+		goto redirty_out;
+	
+	f2fs_wait_on_page_writeback(page, NODE,false);
+#else
 	wait_on_page_writeback(page);
+#endif
 
 	/* get old block addr of this node page */
 	nid = nid_of_node(page);
@@ -1152,12 +1170,8 @@ static int f2fs_write_node_page(struct page *page,
 		return 0;
 	}
 
-	if (wbc->for_reclaim) {
-		dec_page_count(sbi, F2FS_DIRTY_NODES);
-		wbc->pages_skipped++;
-		set_page_dirty(page);
-		return AOP_WRITEPAGE_ACTIVATE;
-	}
+	if (wbc->for_reclaim)
+		goto redirty_out;
 
 	mutex_lock(&sbi->node_write);
 	set_page_writeback(page);
@@ -1167,6 +1181,12 @@ static int f2fs_write_node_page(struct page *page,
 	mutex_unlock(&sbi->node_write);
 	unlock_page(page);
 	return 0;
+
+redirty_out:
+	dec_page_count(sbi, F2FS_DIRTY_NODES);
+	wbc->pages_skipped++;
+	set_page_dirty(page);
+	return AOP_WRITEPAGE_ACTIVATE;
 }
 
 /*
@@ -1182,11 +1202,15 @@ static int f2fs_write_node_pages(struct address_space *mapping,
 	long nr_to_write = wbc->nr_to_write;
 
 	/* First check balancing cached NAT entries */
+	
+#ifdef NO_PRE
+	 f2fs_balance_fs_bg(sbi);
+#else
 	if (try_to_free_nats(sbi, NAT_ENTRY_PER_BLOCK)) {
 		f2fs_sync_fs(sbi->sb, true);
 		return 0;
 	}
-
+#endif
 	/* collect a number of dirty node pages and write together */
 	if (get_pages(sbi, F2FS_DIRTY_NODES) < COLLECT_DIRTY_NODES)
 		return 0;
